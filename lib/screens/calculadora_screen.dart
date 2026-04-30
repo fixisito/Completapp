@@ -39,6 +39,11 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
     _cargarPrecios();
   }
 
+  Future<void> _guardarUltimoTotal() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('ultimos_completos', totalCompletos);
+  }
+
   Future<void> _cargarPrecios() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -60,12 +65,14 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
       while (completosPorPersona.length < personas) completosPorPersona.add(1);
       completosPorPersona = completosPorPersona.sublist(0, personas);
     });
+    _guardarUltimoTotal();
   }
 
   void cambiarCompletos(int index, int delta) {
     setState(() {
       completosPorPersona[index] = (completosPorPersona[index] + delta).clamp(1, 10);
     });
+    _guardarUltimoTotal();
   }
 
   int get totalCompletos => completosPorPersona.fold(0, (a, b) => a + b);
