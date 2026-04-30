@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:math';
-import '../theme/colors.dart';
+import '../theme/app_theme.dart';
 
 class JuegosScreen extends StatefulWidget {
   const JuegosScreen({super.key});
@@ -16,7 +16,8 @@ class _JuegosScreenState extends State<JuegosScreen> {
   int puntaje = 0;
   int mejorPuntaje = 0;
   int vidas = 3;
-  Timer? _timer;
+  Timer? _spawnTimer;
+  Timer? _moveTimer;
   final Random _random = Random();
 
   List<_Completo> completos = [];
@@ -31,12 +32,14 @@ class _JuegosScreenState extends State<JuegosScreen> {
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _spawnTimer?.cancel();
+    _moveTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _cargarMejorPuntaje() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       mejorPuntaje = prefs.getInt('mejor_puntaje_atrapa') ?? 0;
     });
@@ -76,14 +79,12 @@ class _JuegosScreenState extends State<JuegosScreen> {
       completos = [];
     });
 
-    // Spawn de completos cada 1.2 segundos
-    _timer = Timer.periodic(const Duration(milliseconds: 1200), (_) {
+    _spawnTimer = Timer.periodic(const Duration(milliseconds: 1200), (_) {
       if (!mounted) return;
       _spawnCompleto();
     });
 
-    // Loop de movimiento cada 50ms
-    Timer.periodic(const Duration(milliseconds: 50), (t) {
+    _moveTimer = Timer.periodic(const Duration(milliseconds: 50), (t) {
       if (!mounted || !jugando) {
         t.cancel();
         return;
@@ -95,6 +96,7 @@ class _JuegosScreenState extends State<JuegosScreen> {
   void _spawnCompleto() {
     if (areaAncho == 0) return;
     final x = _random.nextDouble() * (areaAncho - 60);
+    if (!mounted) return;
     setState(() {
       completos.add(_Completo(
         id: DateTime.now().millisecondsSinceEpoch,
@@ -106,6 +108,7 @@ class _JuegosScreenState extends State<JuegosScreen> {
   }
 
   void _moverCompletos() {
+    if (!mounted) return;
     setState(() {
       List<_Completo> aEliminar = [];
       for (var c in completos) {
@@ -134,7 +137,8 @@ class _JuegosScreenState extends State<JuegosScreen> {
   }
 
   void _terminarJuego() {
-    _timer?.cancel();
+    _spawnTimer?.cancel();
+    _moveTimer?.cancel();
     setState(() {
       jugando = false;
       completos = [];
@@ -267,7 +271,7 @@ class _JuegosScreenState extends State<JuegosScreen> {
                           borderRadius: BorderRadius.circular(99),
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.rojo.withOpacity(0.4),
+                              color: AppColors.rojo.withAlpha(102),
                               blurRadius: 16,
                               offset: const Offset(0, 6),
                             ),
@@ -313,14 +317,12 @@ class _JuegosScreenState extends State<JuegosScreen> {
                   areaAlto = constraints.maxHeight;
                   return Stack(
                     children: [
-                      // Fondo
                       Container(
                         decoration: BoxDecoration(
                           color: AppColors.crema,
                           borderRadius: BorderRadius.circular(20),
                         ),
                       ),
-                      // Completos
                       ...completos.map((c) => Positioned(
                         left: c.x,
                         top: c.y,

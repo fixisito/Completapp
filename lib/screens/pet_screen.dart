@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
-import '../theme/colors.dart';
+import '../theme/app_theme.dart';
 
 class PetScreen extends StatefulWidget {
   const PetScreen({super.key});
@@ -17,6 +17,8 @@ class _PetScreenState extends State<PetScreen> {
   int exp = 0;
   String accesorioActivo = '';
   Timer? _timer;
+  double _petScale = 1.0;
+  double _feedFlash = 0.0;
 
   final List<Map<String, dynamic>> accesorios = [
     {'emoji': '🎩', 'nombre': 'Galera',    'desbloqueado': true},
@@ -31,7 +33,6 @@ class _PetScreenState extends State<PetScreen> {
   void initState() {
     super.initState();
     _cargarEstado();
-    // Baja hambre y felicidad cada 30 segundos
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
       _bajarEstados();
     });
@@ -49,11 +50,10 @@ class _PetScreenState extends State<PetScreen> {
     final ahora = DateTime.now().millisecondsSinceEpoch;
     final segundosPasados = ((ahora - ultimaVez) / 1000).floor();
 
+    if (!mounted) return;
     setState(() {
-      hambre = (prefs.getDouble('pet_hambre') ?? 80)
-          - (segundosPasados / 30) * 3;
-      felicidad = (prefs.getDouble('pet_felicidad') ?? 80)
-          - (segundosPasados / 30) * 2;
+      hambre = (prefs.getDouble('pet_hambre') ?? 80) - (segundosPasados / 30) * 3;
+      felicidad = (prefs.getDouble('pet_felicidad') ?? 80) - (segundosPasados / 30) * 2;
       hambre = hambre.clamp(0, 100);
       felicidad = felicidad.clamp(0, 100);
       nivel = prefs.getInt('pet_nivel') ?? 1;
@@ -75,6 +75,7 @@ class _PetScreenState extends State<PetScreen> {
   }
 
   void _bajarEstados() {
+    if (!mounted) return;
     setState(() {
       hambre = (hambre - 3).clamp(0, 100);
       felicidad = (felicidad - 2).clamp(0, 100);
@@ -82,7 +83,26 @@ class _PetScreenState extends State<PetScreen> {
     _guardarEstado();
   }
 
+  void _animarPet() {
+    setState(() => _petScale = 1.2);
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) setState(() => _petScale = 0.9);
+    });
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) setState(() => _petScale = 1.0);
+    });
+  }
+
+  void _animarFeed() {
+    setState(() => _feedFlash = 1.0);
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (mounted) setState(() => _feedFlash = 0.0);
+    });
+  }
+
   void _alimentar() {
+    _animarPet();
+    _animarFeed();
     setState(() {
       hambre = (hambre + 20).clamp(0, 100);
       felicidad = (felicidad + 5).clamp(0, 100);
@@ -94,6 +114,7 @@ class _PetScreenState extends State<PetScreen> {
   }
 
   void _jugar() {
+    _animarPet();
     setState(() {
       felicidad = (felicidad + 15).clamp(0, 100);
       hambre = (hambre - 5).clamp(0, 100);
@@ -128,8 +149,7 @@ class _PetScreenState extends State<PetScreen> {
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(mensaje,
-            style: const TextStyle(fontWeight: FontWeight.w700)),
+        content: Text(mensaje, style: const TextStyle(fontWeight: FontWeight.w700)),
         backgroundColor: AppColors.cafe,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -205,7 +225,7 @@ class _PetScreenState extends State<PetScreen> {
               child: Column(
                 children: [
 
-                  // PET
+                  // PET con animación
                   GestureDetector(
                     onTap: _alimentar,
                     child: Container(
@@ -213,16 +233,39 @@ class _PetScreenState extends State<PetScreen> {
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          Text('🌭',
-                            style: TextStyle(
-                              fontSize: 100,
-                              shadows: [Shadow(color: Colors.black26, blurRadius: 20, offset: const Offset(0, 8))],
+                          // Flash de alimentación
+                          AnimatedOpacity(
+                            opacity: _feedFlash,
+                            duration: const Duration(milliseconds: 400),
+                            child: Container(
+                              width: 140,
+                              height: 140,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: AppColors.amarillo.withAlpha(60),
+                              ),
+                            ),
+                          ),
+                          // Pet con rebote
+                          AnimatedScale(
+                            scale: _petScale,
+                            duration: const Duration(milliseconds: 150),
+                            curve: Curves.easeOutBack,
+                            child: Text('🌭',
+                              style: TextStyle(
+                                fontSize: 100,
+                                shadows: [Shadow(color: Colors.black26, blurRadius: 20, offset: const Offset(0, 8))],
+                              ),
                             ),
                           ),
                           if (accesorioActivo.isNotEmpty)
                             Positioned(
                               top: 0,
-                              child: Text(accesorioActivo, style: const TextStyle(fontSize: 40)),
+                              child: AnimatedScale(
+                                scale: _petScale,
+                                duration: const Duration(milliseconds: 150),
+                                child: Text(accesorioActivo, style: const TextStyle(fontSize: 40)),
+                              ),
                             ),
                           Positioned(
                             bottom: 0,
@@ -239,7 +282,7 @@ class _PetScreenState extends State<PetScreen> {
 
                   const SizedBox(height: 20),
 
-                  // STATS
+                  // STATS con barras animadas
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -287,10 +330,10 @@ class _PetScreenState extends State<PetScreen> {
                   const SizedBox(height: 20),
 
                   // ACCESORIOS
-                  Align(
+                  const Align(
                     alignment: Alignment.centerLeft,
                     child: Text('🎽 Accesorios',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.cafe),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.cafe),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -319,7 +362,8 @@ class _PetScreenState extends State<PetScreen> {
                           _guardarEstado();
                         }
                             : null,
-                        child: Container(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
                           decoration: BoxDecoration(
                             color: equipado
                                 ? const Color(0xFFe8f8ec)
@@ -327,7 +371,7 @@ class _PetScreenState extends State<PetScreen> {
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: equipado ? AppColors.verde : const Color(0xFFe0e0e0),
-                              width: 2,
+                              width: equipado ? 3 : 2,
                             ),
                           ),
                           child: Stack(
@@ -392,11 +436,16 @@ class _PetScreenState extends State<PetScreen> {
         const SizedBox(height: 6),
         ClipRRect(
           borderRadius: BorderRadius.circular(99),
-          child: LinearProgressIndicator(
-            value: valor / 100,
-            minHeight: 12,
-            backgroundColor: const Color(0xFFf0f0f0),
-            valueColor: AlwaysStoppedAnimation<Color>(color),
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: valor / 100),
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeOutCubic,
+            builder: (context, animVal, _) => LinearProgressIndicator(
+              value: animVal,
+              minHeight: 12,
+              backgroundColor: const Color(0xFFf0f0f0),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
           ),
         ),
       ],
@@ -417,7 +466,7 @@ class _PetScreenState extends State<PetScreen> {
           color: color,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
-            BoxShadow(color: color.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 4)),
+            BoxShadow(color: color.withAlpha(89), blurRadius: 10, offset: const Offset(0, 4)),
           ],
         ),
         child: Column(

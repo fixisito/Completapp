@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../theme/colors.dart';
+import '../theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final void Function(int) onTabChange;
+
+  const HomeScreen({super.key, required this.onTabChange});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   double hambre = 80;
   double felicidad = 80;
   int nivel = 1;
@@ -18,7 +20,21 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _cargarDatos();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _cargarDatos();
+    }
   }
 
   @override
@@ -33,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final ahora = DateTime.now().millisecondsSinceEpoch;
     final segundosPasados = ((ahora - ultimaVez) / 1000).floor();
 
+    if (!mounted) return;
     setState(() {
       hambre = ((prefs.getDouble('pet_hambre') ?? 80) - (segundosPasados / 30) * 3).clamp(0, 100);
       felicidad = ((prefs.getDouble('pet_felicidad') ?? 80) - (segundosPasados / 30) * 2).clamp(0, 100);
@@ -114,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       border: Border.all(color: const Color(0xFFd0f0d8), width: 2),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.verde.withOpacity(0.1),
+                          color: AppColors.verde.withAlpha(26),
                           blurRadius: 16,
                           offset: const Offset(0, 6),
                         ),
@@ -211,7 +228,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ? 'Último cálculo: $ultimosCompletos completos'
                         : '¿Cuántos completos necesitas?',
                     gradiente: const [AppColors.rojo, Color(0xFFc0180c)],
-                    onTap: () {},
+                    onTap: () => widget.onTabChange(1),
                   ),
                   const SizedBox(height: 12),
 
@@ -223,7 +240,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           titulo: 'Mi Completo',
                           subtitulo: 'Nivel $nivel',
                           gradiente: const [AppColors.verde, Color(0xFF1d8a38)],
-                          onTap: () {},
+                          onTap: () => widget.onTabChange(2),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -233,7 +250,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           titulo: 'Mini Juegos',
                           subtitulo: 'Gana accesorios',
                           gradiente: const [AppColors.amarillo, Color(0xFFd4a500)],
-                          onTap: () {},
+                          onTap: () => widget.onTabChange(3),
                         ),
                       ),
                     ],
@@ -273,7 +290,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _MenuCard extends StatelessWidget {
+class _MenuCard extends StatefulWidget {
   final String emoji;
   final String titulo;
   final String subtitulo;
@@ -289,38 +306,55 @@ class _MenuCard extends StatelessWidget {
   });
 
   @override
+  State<_MenuCard> createState() => _MenuCardState();
+}
+
+class _MenuCardState extends State<_MenuCard> {
+  double _scale = 1.0;
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: gradiente,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      onTapDown: (_) => setState(() => _scale = 0.95),
+      onTapUp: (_) {
+        setState(() => _scale = 1.0);
+        widget.onTap();
+      },
+      onTapCancel: () => setState(() => _scale = 1.0),
+      child: AnimatedScale(
+        scale: _scale,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: widget.gradiente,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: widget.gradiente[0].withAlpha(89),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: gradiente[0].withOpacity(0.35),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(emoji, style: const TextStyle(fontSize: 36)),
-            const SizedBox(height: 8),
-            Text(titulo,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white),
-            ),
-            Text(subtitulo,
-              style: const TextStyle(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w600),
-            ),
-          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(widget.emoji, style: const TextStyle(fontSize: 36)),
+              const SizedBox(height: 8),
+              Text(widget.titulo,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white),
+              ),
+              Text(widget.subtitulo,
+                style: const TextStyle(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
         ),
       ),
     );

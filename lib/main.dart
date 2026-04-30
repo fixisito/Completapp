@@ -3,6 +3,7 @@ import 'screens/home_screen.dart';
 import 'screens/calculadora_screen.dart';
 import 'screens/pet_screen.dart';
 import 'screens/juegos_screen.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   runApp(const CompletApp());
@@ -16,6 +17,7 @@ class CompletApp extends StatelessWidget {
     return MaterialApp(
       title: 'CompletApp',
       debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
       home: const MainNav(),
     );
   }
@@ -31,20 +33,27 @@ class MainNav extends StatefulWidget {
 class _MainNavState extends State<MainNav> {
   int _paginaActual = 0;
 
-  final List<Widget> _pantallas = const [
-    HomeScreen(),
-    CalculadoraScreen(),
-    PetScreen(),
-    JuegosScreen(),
-  ];
+  void _cambiarTab(int index) {
+    setState(() => _paginaActual = index);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> pantallas = [
+      HomeScreen(onTabChange: _cambiarTab),
+      const CalculadoraScreen(),
+      const PetScreen(),
+      const JuegosScreen(),
+    ];
+
     return Scaffold(
-      body: _pantallas[_paginaActual],
+      body: IndexedStack(
+        index: _paginaActual,
+        children: pantallas,
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _paginaActual,
-        onTap: (i) => setState(() => _paginaActual = i),
+        onTap: _cambiarTab,
         type: BottomNavigationBarType.fixed,
         backgroundColor: Colors.white,
         selectedItemColor: const Color(0xFFE8281A),
