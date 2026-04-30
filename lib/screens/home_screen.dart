@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../services/game_data.dart';
 import '../theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -12,16 +12,19 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  double hambre = 80;
+  double comida = 80;
   double felicidad = 80;
   int nivel = 1;
+  int monedas = 0;
   int ultimosCompletos = 0;
+  String nombrePet = 'Completito';
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _cargarDatos();
+    GameData.verificarRachaDiaria();
   }
 
   @override
@@ -32,9 +35,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _cargarDatos();
-    }
+    if (state == AppLifecycleState.resumed) _cargarDatos();
   }
 
   @override
@@ -44,29 +45,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _cargarDatos() async {
-    final prefs = await SharedPreferences.getInstance();
-    final ultimaVez = prefs.getInt('pet_timestamp') ?? 0;
-    final ahora = DateTime.now().millisecondsSinceEpoch;
-    final segundosPasados = ((ahora - ultimaVez) / 1000).floor();
-
+    final stats = await GameData.getPetStats();
     if (!mounted) return;
     setState(() {
-      hambre = ((prefs.getDouble('pet_hambre') ?? 80) - (segundosPasados / 30) * 3).clamp(0, 100);
-      felicidad = ((prefs.getDouble('pet_felicidad') ?? 80) - (segundosPasados / 30) * 2).clamp(0, 100);
-      nivel = prefs.getInt('pet_nivel') ?? 1;
-      ultimosCompletos = prefs.getInt('ultimos_completos') ?? 0;
+      comida = stats['comida'];
+      felicidad = stats['felicidad'];
+      nivel = stats['nivel'];
+      monedas = stats['monedas'];
+      nombrePet = (stats['nombre'] as String).isEmpty ? 'Completito' : stats['nombre'];
+      ultimosCompletos = 0;
     });
   }
 
   String get _estadoAnimo {
-    final min = hambre < felicidad ? hambre : felicidad;
+    final min = comida < felicidad ? comida : felicidad;
     if (min > 70) return '😄';
     if (min > 40) return '😐';
     return '😢';
   }
 
   String get _mensajePet {
-    final min = hambre < felicidad ? hambre : felicidad;
+    final min = comida < felicidad ? comida : felicidad;
     if (min > 70) return '¡Estoy feliz y satisfecho!';
     if (min > 40) return 'Podría comer algo...';
     return '¡Tengo hambre, aliméntame!';
@@ -96,20 +95,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('CompletApp 🌭',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('CompletApp 🌭',
+                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      DateTime.now().hour < 12
+                          ? '¡Buenos días!'
+                          : DateTime.now().hour < 20
+                          ? '¡Buenas tardes!'
+                          : '¡Buenas noches!',
+                      style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  DateTime.now().hour < 12
-                      ? '¡Buenos días!'
-                      : DateTime.now().hour < 20
-                      ? '¡Buenas tardes!'
-                      : '¡Buenas noches!',
-                  style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Row(
+                    children: [
+                      const Text('🪙', style: TextStyle(fontSize: 16)),
+                      const SizedBox(width: 4),
+                      Text('$monedas',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -139,7 +159,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                     child: Row(
                       children: [
-                        // PET EMOJI
                         Stack(
                           alignment: Alignment.center,
                           children: [
@@ -151,7 +170,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           ],
                         ),
                         const SizedBox(width: 16),
-
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -159,8 +177,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text('Mi Completito',
-                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.cafe),
+                                  Flexible(
+                                    child: Text(nombrePet,
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.cafe),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
@@ -179,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 style: const TextStyle(fontSize: 12, color: AppColors.mostaza, fontWeight: FontWeight.w600),
                               ),
                               const SizedBox(height: 10),
-                              _miniStatBarra('🍞', hambre, _colorBarra(hambre)),
+                              _miniStatBarra('🍞', comida, _colorBarra(comida)),
                               const SizedBox(height: 6),
                               _miniStatBarra('😄', felicidad, _colorBarra(felicidad)),
                             ],
@@ -191,8 +212,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
                   const SizedBox(height: 20),
 
-                  // ALERTA SI EL PET TIENE HAMBRE
-                  if (hambre < 30)
+                  if (comida < 30)
                     Container(
                       margin: const EdgeInsets.only(bottom: 16),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -201,32 +221,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: AppColors.amarillo, width: 2),
                       ),
-                      child: const Row(
+                      child: Row(
                         children: [
-                          Text('⚠️', style: TextStyle(fontSize: 20)),
-                          SizedBox(width: 10),
+                          const Text('⚠️', style: TextStyle(fontSize: 20)),
+                          const SizedBox(width: 10),
                           Expanded(
-                            child: Text('¡Tu completito tiene hambre! Ve a alimentarlo.',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.mostaza),
+                            child: Text('¡$nombrePet tiene hambre! Ve a alimentarlo.',
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.mostaza),
                             ),
                           ),
                         ],
                       ),
                     ),
 
-                  // ACCESOS RAPIDOS
                   const Text('¿Qué hacemos?',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.cafe),
                   ),
                   const SizedBox(height: 14),
 
-                  // CARD CALCULADORA
                   _MenuCard(
                     emoji: '🧮',
                     titulo: 'Calculadora',
-                    subtitulo: ultimosCompletos > 0
-                        ? 'Último cálculo: $ultimosCompletos completos'
-                        : '¿Cuántos completos necesitas?',
+                    subtitulo: '¿Cuántos completos necesitas?',
                     gradiente: const [AppColors.rojo, Color(0xFFc0180c)],
                     onTap: () => widget.onTabChange(1),
                   ),
@@ -237,7 +253,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       Expanded(
                         child: _MenuCard(
                           emoji: '🌭',
-                          titulo: 'Mi Completo',
+                          titulo: nombrePet,
                           subtitulo: 'Nivel $nivel',
                           gradiente: const [AppColors.verde, Color(0xFF1d8a38)],
                           onTap: () => widget.onTabChange(2),
@@ -248,7 +264,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         child: _MenuCard(
                           emoji: '🎮',
                           titulo: 'Mini Juegos',
-                          subtitulo: 'Gana accesorios',
+                          subtitulo: 'Gana monedas 🪙',
                           gradiente: const [AppColors.amarillo, Color(0xFFd4a500)],
                           onTap: () => widget.onTabChange(3),
                         ),
@@ -349,6 +365,7 @@ class _MenuCardState extends State<_MenuCard> {
               const SizedBox(height: 8),
               Text(widget.titulo,
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white),
+                overflow: TextOverflow.ellipsis,
               ),
               Text(widget.subtitulo,
                 style: const TextStyle(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w600),
