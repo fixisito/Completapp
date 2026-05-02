@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
-import 'dart:async';
 import 'dart:math';
 import '../services/game_data.dart';
 import '../theme/app_theme.dart';
@@ -35,37 +35,70 @@ class _Item {
 }
 
 class JuegosScreen extends StatefulWidget {
-  const JuegosScreen({super.key});
+  final bool isActive;
+  const JuegosScreen({super.key, this.isActive = true});
   @override
   State<JuegosScreen> createState() => _JuegosScreenState();
 }
 
-class _JuegosScreenState extends State<JuegosScreen> {
+class _JuegosScreenState extends State<JuegosScreen> with SingleTickerProviderStateMixin {
   bool jugando = false;
+  bool pausado = false;
   int puntaje = 0;
   int mejorPuntaje = 0;
   int vidas = 3;
   int monedasGanadas = 0;
-  Timer? _spawnTimer;
-  Timer? _moveTimer;
+
+  late Ticker _ticker;
+  Duration _lastTime = Duration.zero;
+  double _timeSinceLastSpawn = 0;
+
   final Random _random = Random();
 
   List<_Item> items = [];
   double areaAncho = 0;
   double areaAlto = 0;
   bool _cargando = true;
+  final List<_FloatingText> _floatingTexts = [];
 
   @override
   void initState() {
     super.initState();
+    _ticker = createTicker(_onTick);
     _cargarMejorPuntaje();
   }
 
   @override
   void dispose() {
-    _spawnTimer?.cancel();
-    _moveTimer?.cancel();
+    _ticker.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(JuegosScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isActive && jugando && !pausado) {
+      _pausarJuego();
+    }
+  }
+
+  void _onTick(Duration elapsed) {
+    if (!jugando || pausado || areaAncho == 0) return;
+
+    final dt = (elapsed.inMilliseconds - _lastTime.inMilliseconds) / 1000.0;
+    _lastTime = elapsed;
+
+    if (dt > 0.1) return; // Prevent big jumps if lag
+
+    _timeSinceLastSpawn += dt;
+    final double spawnIntervalSeconds = _spawnInterval / 1000.0;
+
+    if (_timeSinceLastSpawn >= spawnIntervalSeconds) {
+      _timeSinceLastSpawn = 0;
+      _spawnItem();
+    }
+
+    _moverItems(dt);
   }
 
   Future<void> _cargarMejorPuntaje() async {
@@ -87,21 +120,62 @@ class _JuegosScreenState extends State<JuegosScreen> {
     GameData.registrarPartida();
     setState(() {
       jugando = true;
+      pausado = false;
       puntaje = 0;
       vidas = 3;
       monedasGanadas = 0;
       items = [];
+      _timeSinceLastSpawn = 0;
+      _lastTime = Duration.zero;
     });
+    _ticker.start();
+  }
 
-    _spawnTimer = Timer.periodic(Duration(milliseconds: _spawnInterval), (_) {
-      if (!mounted) return;
-      _spawnItem();
-    });
+  void _pausarJuego() {
+    if (!jugando || pausado) return;
+    setState(() => pausado = true);
+    _ticker.stop();
 
-    _moveTimer = Timer.periodic(const Duration(milliseconds: 50), (t) {
-      if (!mounted || !jugando) { t.cancel(); return; }
-      _moverItems();
-    });
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text('⏸️ Pausa', style: TextStyle(fontWeight: FontWeight.w900, color: AppColors.cafe), textAlign: TextAlign.center),
+        content: const Text('El juego está pausado.', textAlign: TextAlign.center, style: TextStyle(fontSize: 16)),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _terminarJuego(mostrarDialogo: false);
+                  },
+                  child: const Text('Salir', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w800)),
+                ),
+              ),
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.verde, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _reanudarJuego();
+                  },
+                  child: const Text('Continuar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                ),
+              ),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  void _reanudarJuego() {
+    setState(() => pausado = false);
+    _lastTime = Duration.zero; 
+    _ticker.start();
   }
 
   int get _spawnInterval {
@@ -120,32 +194,34 @@ class _JuegosScreenState extends State<JuegosScreen> {
   }
 
   void _spawnItem() {
-    if (areaAncho == 0) return;
     final tipo = _tipoAleatorio();
     final x = _random.nextDouble() * (areaAncho - 60);
-    if (!mounted) return;
+    // Base speed: ~50 pixels per second, scaling up
+    final velocidadBase = 50.0 + (puntaje * 1.6).clamp(0, 80);
     setState(() {
       items.add(_Item(
         id: DateTime.now().millisecondsSinceEpoch + _random.nextInt(1000),
         tipo: tipo,
         x: x,
         y: -10,
-        velocidad: 2.5 + (puntaje * 0.08).clamp(0, 4),
+        velocidad: velocidadBase,
       ));
     });
   }
 
-  void _moverItems() {
-    if (!mounted) return;
+  void _moverItems(double dt) {
     setState(() {
       List<_Item> aEliminar = [];
       for (var item in items) {
-        item.y += item.velocidad;
+        item.y += item.velocidad * dt;
         if (item.y > areaAlto) {
           aEliminar.add(item);
           if (item.tipo != TipoItem.cebolla) {
             vidas--;
-            if (vidas <= 0) _terminarJuego();
+            if (vidas <= 0) {
+              _terminarJuego();
+              return;
+            }
           }
         }
       }
@@ -154,6 +230,7 @@ class _JuegosScreenState extends State<JuegosScreen> {
   }
 
   void _tocarItem(_Item item) {
+    if (pausado) return;
     HapticFeedback.selectionClick();
     setState(() {
       items.remove(item);
@@ -170,8 +247,11 @@ class _JuegosScreenState extends State<JuegosScreen> {
         case TipoItem.cebolla:
           vidas--;
           HapticFeedback.heavyImpact();
-          if (vidas <= 0) _terminarJuego();
-          return;
+          if (vidas <= 0) {
+            _terminarJuego();
+            return;
+          }
+          break;
       }
       if (puntaje > mejorPuntaje) {
         mejorPuntaje = puntaje;
@@ -179,18 +259,31 @@ class _JuegosScreenState extends State<JuegosScreen> {
     });
     if (item.tipo != TipoItem.cebolla) {
       GameData.agregarMonedas(item.tipo == TipoItem.dorado ? 5 : 1);
+      _mostrarFloating(item.x, item.y, item.tipo == TipoItem.dorado ? '+5 🪙' : '+1 🪙');
+    } else {
+      _mostrarFloating(item.x, item.y, '-1 ❤️');
     }
   }
 
-  void _terminarJuego() {
-    _spawnTimer?.cancel();
-    _moveTimer?.cancel();
+  void _mostrarFloating(double x, double y, String texto) {
+    final ft = _FloatingText(x: x, y: y, texto: texto);
+    setState(() => _floatingTexts.add(ft));
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) setState(() => _floatingTexts.remove(ft));
+    });
+  }
+
+  void _terminarJuego({bool mostrarDialogo = true}) {
+    _ticker.stop();
     _guardarMejorPuntaje();
 
     setState(() {
       jugando = false;
+      pausado = false;
       items = [];
     });
+
+    if (!mostrarDialogo) return;
 
     showDialog(
       context: context,
@@ -221,13 +314,22 @@ class _JuegosScreenState extends State<JuegosScreen> {
           ],
         ),
         actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.rojo, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), padding: const EdgeInsets.symmetric(vertical: 14)),
-              onPressed: () { Navigator.pop(context); _iniciarJuego(); },
-              child: const Text('Jugar de nuevo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () { Navigator.pop(context); },
+                  child: const Text('Salir', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w800)),
+                ),
+              ),
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.rojo, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                  onPressed: () { Navigator.pop(context); _iniciarJuego(); },
+                  child: const Text('Jugar de nuevo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13), textAlign: TextAlign.center),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -237,8 +339,24 @@ class _JuegosScreenState extends State<JuegosScreen> {
   @override
   Widget build(BuildContext context) {
     if (_cargando) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: AppColors.blanco,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('🎮', style: TextStyle(fontSize: 60)),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: 120,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child: const LinearProgressIndicator(minHeight: 4, color: AppColors.amarillo, backgroundColor: AppColors.crema),
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -249,10 +367,26 @@ class _JuegosScreenState extends State<JuegosScreen> {
           GradientHeader(
             titulo: '🎮 Mini Juegos',
             gradiente: const [AppColors.amarillo, AppColors.naranja],
-            accionDerecha: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(99)),
-              child: Text('🏆 $mejorPuntaje', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
+            accionDerecha: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (jugando) ...[
+                  GestureDetector(
+                    onTap: _pausarJuego,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: const BoxDecoration(color: Colors.white24, shape: BoxShape.circle),
+                      child: const Icon(Icons.pause, color: Colors.white, size: 20),
+                    ),
+                  ),
+                ],
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(99)),
+                  child: Text('🏆 $mejorPuntaje', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
+                ),
+              ],
             ),
           ),
 
@@ -329,6 +463,19 @@ class _JuegosScreenState extends State<JuegosScreen> {
                           child: Text(item.emoji, style: TextStyle(fontSize: item.size)),
                         ),
                       )),
+                      ..._floatingTexts.map((ft) => TweenAnimationBuilder<double>(
+                        key: ValueKey(ft.hashCode),
+                        tween: Tween(begin: 0, end: 1),
+                        duration: const Duration(milliseconds: 800),
+                        builder: (context, val, child) => Positioned(
+                          left: ft.x,
+                          top: ft.y - (val * 40),
+                          child: Opacity(
+                            opacity: 1.0 - val,
+                            child: Text(ft.texto, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.cafe)),
+                          ),
+                        ),
+                      )),
                     ],
                   );
                 },
@@ -340,4 +487,11 @@ class _JuegosScreenState extends State<JuegosScreen> {
       ),
     );
   }
+}
+
+class _FloatingText {
+  final double x;
+  final double y;
+  final String texto;
+  _FloatingText({required this.x, required this.y, required this.texto});
 }

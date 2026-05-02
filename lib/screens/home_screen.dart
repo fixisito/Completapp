@@ -7,8 +7,9 @@ import '../widgets/coin_badge.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int) onTabChange;
+  final bool isActive;
 
-  const HomeScreen({super.key, required this.onTabChange});
+  const HomeScreen({super.key, required this.onTabChange, required this.isActive});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -39,7 +40,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _cargarDatos();
+    if (state == AppLifecycleState.resumed && widget.isActive) _cargarDatos();
+  }
+
+  @override
+  void didUpdateWidget(HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      _cargarDatos();
+    }
   }
 
   @override
@@ -50,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _cargarDatos() async {
     final stats = await GameData.getPetStats();
+    final ultCompletos = await GameData.cargarUltimosCompletos();
     if (!mounted) return;
     setState(() {
       comida = stats['comida'];
@@ -57,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       nivel = stats['nivel'];
       monedas = stats['monedas'];
       nombrePet = (stats['nombre'] as String).isEmpty ? 'Completito' : stats['nombre'];
-      ultimosCompletos = 0;
+      ultimosCompletos = ultCompletos;
       _cargando = false;
     });
   }
@@ -82,11 +92,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return AppColors.rojo;
   }
 
+  String get _saludo {
+    final hora = DateTime.now().hour;
+    if (hora < 12) return '¡Buenos días!';
+    if (hora < 20) return '¡Buenas tardes!';
+    return '¡Buenas noches!';
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_cargando) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: AppColors.blanco,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('🌭', style: TextStyle(fontSize: 60)),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: 120,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child: const LinearProgressIndicator(
+                    minHeight: 4,
+                    color: AppColors.rojo,
+                    backgroundColor: AppColors.crema,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -98,21 +135,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             titulo: 'CompletApp 🌭',
             gradiente: const [AppColors.rojo, AppColors.naranja],
             accionDerecha: CoinBadge(monedas: monedas),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                Text(
-                  DateTime.now().hour < 12
-                      ? '¡Buenos días!'
-                      : DateTime.now().hour < 20
-                      ? '¡Buenas tardes!'
-                      : '¡Buenas noches!',
-                  style: const TextStyle(color: AppColors.mostaza, fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-              ],
+            subtitulo: Text(
+              _saludo,
+              style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
             ),
           ),
 
@@ -122,76 +147,80 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: const Color(0xFFd0f0d8), width: 2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.verde.withAlpha(26),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            const Text('🌭', style: TextStyle(fontSize: 64)),
-                            Positioned(
-                              bottom: 0, right: 0,
-                              child: Text(_estadoAnimo, style: const TextStyle(fontSize: 20)),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                  // TARJETA PET
+                  GestureDetector(
+                    onTap: () => widget.onTabChange(2),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: const Color(0xFFd0f0d8), width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.verde.withAlpha(26),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Stack(
+                            alignment: Alignment.center,
                             children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Flexible(
-                                    child: Text(nombrePet,
-                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.cafe),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.verde,
-                                      borderRadius: BorderRadius.circular(99),
-                                    ),
-                                    child: Text('Nv. $nivel',
-                                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
-                                    ),
-                                  ),
-                                ],
+                              const Text('🌭', style: TextStyle(fontSize: 64)),
+                              Positioned(
+                                bottom: 0, right: 0,
+                                child: Text(_estadoAnimo, style: const TextStyle(fontSize: 20)),
                               ),
-                              const SizedBox(height: 4),
-                              Text(_mensajePet,
-                                style: const TextStyle(fontSize: 12, color: AppColors.mostaza, fontWeight: FontWeight.w600),
-                              ),
-                              const SizedBox(height: 10),
-                              _miniStatBarra('🍞', comida, _colorBarra(comida)),
-                              const SizedBox(height: 6),
-                              _miniStatBarra('😄', felicidad, _colorBarra(felicidad)),
                             ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Flexible(
+                                      child: Text(nombrePet,
+                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.cafe),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.verde,
+                                        borderRadius: BorderRadius.circular(99),
+                                      ),
+                                      child: Text('Nv. $nivel',
+                                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(_mensajePet,
+                                  style: const TextStyle(fontSize: 12, color: AppColors.mostaza, fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 10),
+                                _compactStatBar('🍞', comida, _colorBarra(comida)),
+                                const SizedBox(height: 6),
+                                _compactStatBar('😄', felicidad, _colorBarra(felicidad)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
 
+                  // ALERTA DE HAMBRE
                   if (comida < 30)
                     Container(
                       margin: const EdgeInsets.only(bottom: 16),
@@ -222,7 +251,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   MenuCard(
                     emoji: '🧮',
                     titulo: 'Calculadora',
-                    subtitulo: '¿Cuántos completos necesitas?',
+                    subtitulo: ultimosCompletos > 0
+                        ? 'Último cálculo: $ultimosCompletos completos'
+                        : '¿Cuántos completos necesitas?',
                     gradiente: const [AppColors.rojo, Color(0xFFc0180c)],
                     onTap: () => widget.onTabChange(1),
                   ),
@@ -261,7 +292,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _miniStatBarra(String emoji, double valor, Color color) {
+  /// Versión compacta de StatBar para la tarjeta del pet en el home
+  Widget _compactStatBar(String emoji, double valor, Color color) {
     return Row(
       children: [
         Text(emoji, style: const TextStyle(fontSize: 13)),
@@ -269,11 +301,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Expanded(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(99),
-            child: LinearProgressIndicator(
-              value: valor / 100,
-              minHeight: 8,
-              backgroundColor: const Color(0xFFf0f0f0),
-              valueColor: AlwaysStoppedAnimation<Color>(color),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: valor / 100),
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeOutCubic,
+              builder: (context, animVal, child) => LinearProgressIndicator(
+                value: animVal,
+                minHeight: 8,
+                backgroundColor: const Color(0xFFf0f0f0),
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+              ),
             ),
           ),
         ),

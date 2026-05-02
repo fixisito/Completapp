@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 class CoinBadge extends StatelessWidget {
   final int monedas;
   final Color? backgroundColor;
+  final Color textColor;
 
   const CoinBadge({
     super.key,
     required this.monedas,
     this.backgroundColor,
+    this.textColor = Colors.white,
   });
 
   @override
@@ -19,13 +21,14 @@ class CoinBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(99),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           const Text('🪙', style: TextStyle(fontSize: 14)),
           const SizedBox(width: 4),
           Text(
             '$monedas',
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: textColor,
               fontWeight: FontWeight.w800,
               fontSize: 13,
             ),

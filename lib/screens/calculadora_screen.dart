@@ -214,8 +214,24 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
   @override
   Widget build(BuildContext context) {
     if (_cargando) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: AppColors.blanco,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('🧮', style: TextStyle(fontSize: 60)),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: 120,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child: const LinearProgressIndicator(minHeight: 4, color: AppColors.rojo, backgroundColor: AppColors.crema),
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
 

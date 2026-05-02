@@ -47,6 +47,7 @@ class _PetScreenState extends State<PetScreen> {
   Map<String, dynamic> _estadisticas = {};
   List<String> _accesoriosDesbloqueados = [];
   bool _cargando = true;
+  double _shakeOffset = 0.0;
 
   static const comidas = [
     ComidaItem(nombre: 'Pan solo', emoji: '🍞', costo: 0, comida: 10, felicidad: 2, exp: 3),
@@ -252,10 +253,21 @@ class _PetScreenState extends State<PetScreen> {
     });
   }
 
+  void _animarShake() {
+    const offsets = [8.0, -8.0, 6.0, -6.0, 3.0, -3.0, 0.0];
+    for (int i = 0; i < offsets.length; i++) {
+      Future.delayed(Duration(milliseconds: i * 50), () {
+        if (mounted) setState(() => _shakeOffset = offsets[i]);
+      });
+    }
+  }
+
   Future<void> _alimentar(ComidaItem item) async {
     if (item.costo > 0) {
       final exito = await GameData.gastarMonedas(item.costo);
       if (!exito) {
+        _animarShake();
+        HapticFeedback.heavyImpact();
         _mostrarToast('No tienes suficientes monedas 🪙');
         return;
       }
@@ -352,8 +364,24 @@ class _PetScreenState extends State<PetScreen> {
   @override
   Widget build(BuildContext context) {
     if (_cargando) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: AppColors.blanco,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('🌭', style: TextStyle(fontSize: 60)),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: 120,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child: const LinearProgressIndicator(minHeight: 4, color: AppColors.verde, backgroundColor: AppColors.crema),
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -443,40 +471,66 @@ class _PetScreenState extends State<PetScreen> {
 
                   const Align(alignment: Alignment.centerLeft, child: Text('🍽️ Alimentar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.cafe))),
                   const SizedBox(height: 10),
-                  SizedBox(
-                    height: 110,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: comidas.length,
-                      itemBuilder: (_, i) {
-                        final c = comidas[i];
-                        final puedeComprar = c.costo == 0 || monedas >= c.costo;
-                        return GestureDetector(
-                          onTap: puedeComprar ? () => _alimentar(c) : null,
-                          child: Container(
-                            width: 95,
-                            margin: const EdgeInsets.only(right: 10),
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: puedeComprar ? Colors.white : const Color(0xFFf5f5f5),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: puedeComprar ? AppColors.naranja : const Color(0xFFe0e0e0), width: 2),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(c.emoji, style: TextStyle(fontSize: 28, color: puedeComprar ? null : const Color(0xFFcccccc))),
-                                const SizedBox(height: 4),
-                                Text(c.nombre, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: puedeComprar ? AppColors.cafe : Colors.grey), textAlign: TextAlign.center),
-                                const SizedBox(height: 2),
-                                Text(c.costo == 0 ? 'Gratis' : '${c.costo} 🪙',
-                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: puedeComprar ? AppColors.verde : Colors.grey),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 50),
+                    transform: Matrix4.translationValues(_shakeOffset, 0, 0),
+                    child: SizedBox(
+                      height: 110,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: comidas.length,
+                        itemBuilder: (_, i) {
+                          final c = comidas[i];
+                          final puedeComprar = c.costo == 0 || monedas >= c.costo;
+                          return GestureDetector(
+                            onTap: () => _alimentar(c),
+                            onLongPress: () {
+                              showDialog(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  title: Row(children: [Text(c.emoji, style: const TextStyle(fontSize: 28)), const SizedBox(width: 8), Text(c.nombre, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.cafe))]),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _effectRow('🍞 Comida', '+${c.comida.toInt()}'),
+                                      _effectRow('😄 Felicidad', '+${c.felicidad.toInt()}'),
+                                      _effectRow('⭐ Experiencia', '+${c.exp}'),
+                                      _effectRow('🪙 Costo', c.costo == 0 ? 'Gratis' : '${c.costo} monedas'),
+                                    ],
+                                  ),
+                                  actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar'))],
                                 ),
-                              ],
+                              );
+                            },
+                            child: Container(
+                              width: 95,
+                              margin: const EdgeInsets.only(right: 10),
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: puedeComprar ? Colors.white : const Color(0xFFf5f5f5),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: puedeComprar ? AppColors.naranja : const Color(0xFFe0e0e0), width: 2),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(c.emoji, style: TextStyle(fontSize: 28, color: puedeComprar ? null : const Color(0xFFcccccc))),
+                                  const SizedBox(height: 4),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(c.nombre, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: puedeComprar ? AppColors.cafe : Colors.grey), textAlign: TextAlign.center),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(c.costo == 0 ? 'Gratis' : '${c.costo} 🪙',
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: puedeComprar ? AppColors.verde : Colors.grey),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
                   ),
 
@@ -607,6 +661,19 @@ class _PetScreenState extends State<PetScreen> {
         children: [
           Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.cafe)),
           Text(valor, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.mostaza)),
+        ],
+      ),
+    );
+  }
+
+  Widget _effectRow(String label, String valor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.cafe)),
+          Text(valor, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.verde)),
         ],
       ),
     );
