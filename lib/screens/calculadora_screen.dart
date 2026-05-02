@@ -9,8 +9,10 @@ class Ingrediente {
   final String emoji;
   final String unidadCompra;
   final int precioBase;
-  final int rendimiento;
+  final int rendimientoBase;
+  final List<int> opcionesRendimiento;
   int precioActual;
+  int rendimientoActual;
   bool activo;
 
   Ingrediente({
@@ -18,13 +20,16 @@ class Ingrediente {
     required this.emoji,
     required this.unidadCompra,
     required this.precioBase,
-    required this.rendimiento,
+    required this.rendimientoBase,
+    this.opcionesRendimiento = const [],
     int? precioActual,
+    int? rendimientoActual,
     this.activo = false,
-  }) : precioActual = precioActual ?? precioBase;
+  }) : precioActual = precioActual ?? precioBase,
+       rendimientoActual = rendimientoActual ?? rendimientoBase;
 
-  double get costoPorCompleto => precioActual / rendimiento;
-  int unidadesNecesarias(int totalCompletos) => (totalCompletos / rendimiento).ceil();
+  double get costoPorCompleto => precioActual / rendimientoActual;
+  int unidadesNecesarias(int totalCompletos) => (totalCompletos / rendimientoActual).ceil();
   int costoParaCompletos(int totalCompletos) => unidadesNecesarias(totalCompletos) * precioActual;
 }
 
@@ -60,37 +65,40 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
   void initState() {
     super.initState();
     ingredientes = [
-      Ingrediente(nombre: 'Pan de completo', emoji: '🍞', unidadCompra: 'Paquete (10 uds)', precioBase: 2300, rendimiento: 10),
-      Ingrediente(nombre: 'Vienesa', emoji: '🌭', unidadCompra: 'Paquete 250g (5 uds)', precioBase: 1400, rendimiento: 5),
-      Ingrediente(nombre: 'Palta', emoji: '🥑', unidadCompra: '1 unidad', precioBase: 1200, rendimiento: 4),
-      Ingrediente(nombre: 'Tomate', emoji: '🍅', unidadCompra: '1 unidad grande', precioBase: 400, rendimiento: 5),
-      Ingrediente(nombre: 'Mayonesa', emoji: '🫙', unidadCompra: 'Doypack 500g', precioBase: 2200, rendimiento: 25),
-      Ingrediente(nombre: 'Mostaza', emoji: '🟡', unidadCompra: 'Squeeze 400g', precioBase: 1600, rendimiento: 25),
-      Ingrediente(nombre: 'Chucrut', emoji: '🥬', unidadCompra: 'Frasco 400g', precioBase: 1500, rendimiento: 10),
-      Ingrediente(nombre: 'Queso laminado', emoji: '🧀', unidadCompra: 'Paquete 250g', precioBase: 3700, rendimiento: 10),
-      Ingrediente(nombre: 'Ají', emoji: '🌶️', unidadCompra: 'Frasco 240g', precioBase: 1400, rendimiento: 20),
-      Ingrediente(nombre: 'Salsa americana', emoji: '🔴', unidadCompra: 'Frasco 250g', precioBase: 1300, rendimiento: 20),
-      Ingrediente(nombre: 'Ketchup', emoji: '🍅', unidadCompra: 'Doypack 500g', precioBase: 2500, rendimiento: 25),
+      Ingrediente(nombre: 'Pan de completo', emoji: '🍞', unidadCompra: 'Paquetes', precioBase: 2300, rendimientoBase: 10, opcionesRendimiento: [5, 6, 8, 10, 20]),
+      Ingrediente(nombre: 'Vienesa', emoji: '🌭', unidadCompra: 'Paquetes', precioBase: 1400, rendimientoBase: 5, opcionesRendimiento: [5, 10, 20]),
+      Ingrediente(nombre: 'Palta', emoji: '🥑', unidadCompra: 'A granel (uds)', precioBase: 1200, rendimientoBase: 4, opcionesRendimiento: [2, 3, 4, 5, 8]),
+      Ingrediente(nombre: 'Tomate', emoji: '🍅', unidadCompra: 'A granel (uds)', precioBase: 400, rendimientoBase: 5, opcionesRendimiento: [3, 4, 5, 6, 10]),
+      Ingrediente(nombre: 'Mayonesa', emoji: '🫙', unidadCompra: 'Doypack', precioBase: 2200, rendimientoBase: 25, opcionesRendimiento: [10, 15, 25, 40]),
+      Ingrediente(nombre: 'Mostaza', emoji: '🟡', unidadCompra: 'Squeeze', precioBase: 1600, rendimientoBase: 25, opcionesRendimiento: [10, 15, 25, 40]),
+      Ingrediente(nombre: 'Chucrut', emoji: '🥬', unidadCompra: 'Frasco', precioBase: 1500, rendimientoBase: 10, opcionesRendimiento: [5, 10, 15, 20]),
+      Ingrediente(nombre: 'Queso laminado', emoji: '🧀', unidadCompra: 'Paquete', precioBase: 3700, rendimientoBase: 10, opcionesRendimiento: [10, 15, 20]),
+      Ingrediente(nombre: 'Ají', emoji: '🌶️', unidadCompra: 'Frasco', precioBase: 1400, rendimientoBase: 20, opcionesRendimiento: [10, 20, 30]),
+      Ingrediente(nombre: 'Salsa americana', emoji: '🔴', unidadCompra: 'Frasco', precioBase: 1300, rendimientoBase: 20, opcionesRendimiento: [10, 20, 30]),
+      Ingrediente(nombre: 'Ketchup', emoji: '🍅', unidadCompra: 'Doypack', precioBase: 2500, rendimientoBase: 25, opcionesRendimiento: [10, 15, 25, 40]),
     ];
     _cargarPrecios();
     _aplicarReceta(0);
   }
 
   Future<void> _cargarPrecios() async {
-    final precios = await GameData.cargarPreciosIngredientes();
+    final datos = await GameData.cargarDatosIngredientes();
     if (!mounted) return;
     setState(() {
       for (var ing in ingredientes) {
-        if (precios.containsKey(ing.nombre)) {
-          ing.precioActual = precios[ing.nombre]!;
+        if (datos.containsKey(ing.nombre)) {
+          ing.precioActual = datos[ing.nombre]!['precio']!;
+          if (datos[ing.nombre]!.containsKey('rendimiento')) {
+            ing.rendimientoActual = datos[ing.nombre]!['rendimiento']!;
+          }
         }
       }
       _cargando = false;
     });
   }
 
-  Future<void> _guardarPrecio(Ingrediente ing) async {
-    await GameData.guardarPrecioIngrediente(ing.nombre, ing.precioActual);
+  Future<void> _guardarDatos(Ingrediente ing) async {
+    await GameData.guardarDatosIngrediente(ing.nombre, ing.precioActual, ing.rendimientoActual);
   }
 
   Future<void> _guardarUltimoTotal() async {
@@ -153,60 +161,94 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
 
   void _editarPrecio(Ingrediente ing) {
     final controller = TextEditingController(text: ing.precioActual.toString());
+    int tempRendimiento = ing.rendimientoActual;
+
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Text(ing.emoji, style: const TextStyle(fontSize: 24)),
-            const SizedBox(width: 8),
-            Expanded(child: Text(ing.nombre, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.cafe, fontSize: 16))),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(ing.unidadCompra, style: const TextStyle(fontSize: 13, color: AppColors.mostaza, fontWeight: FontWeight.w700)),
-            Text('Rinde para ~${ing.rendimiento} completos', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                prefixText: '\$ ',
-                labelText: 'Precio por unidad (CLP)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rojo, width: 2)),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                Text(ing.emoji, style: const TextStyle(fontSize: 24)),
+                const SizedBox(width: 8),
+                Expanded(child: Text(ing.nombre, style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.cafe, fontSize: 16))),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Rendimiento (Unidades/Pack)', style: TextStyle(fontSize: 13, color: AppColors.mostaza, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ...ing.opcionesRendimiento.map((opcion) => ChoiceChip(
+                        label: Text('$opcion', style: const TextStyle(fontSize: 12)),
+                        selected: tempRendimiento == opcion,
+                        selectedColor: AppColors.naranja.withValues(alpha: 0.3),
+                        onSelected: (selected) {
+                          if (selected) setDialogState(() => tempRendimiento = opcion);
+                        },
+                      )),
+                      if (!ing.opcionesRendimiento.contains(tempRendimiento))
+                        ChoiceChip(
+                          label: Text('$tempRendimiento (Custom)', style: const TextStyle(fontSize: 12)),
+                          selected: true,
+                          selectedColor: AppColors.naranja.withValues(alpha: 0.3),
+                          onSelected: (_) {},
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Precio de compra', style: TextStyle(fontSize: 13, color: AppColors.mostaza, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: controller,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      prefixText: '\$ ',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.rojo, width: 2)),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 6),
-            Text('Precio base: ${formatPesos(ing.precioBase)}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              setState(() => ing.precioActual = ing.precioBase);
-              _guardarPrecio(ing);
-              Navigator.pop(context);
-            },
-            child: const Text('Resetear', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.rojo, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-            onPressed: () {
-              final nuevo = int.tryParse(controller.text);
-              if (nuevo != null && nuevo >= 0) {
-                setState(() => ing.precioActual = nuevo);
-                _guardarPrecio(ing);
-              }
-              Navigator.pop(context);
-            },
-            child: const Text('Guardar', style: TextStyle(color: Colors.white)),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    ing.precioActual = ing.precioBase;
+                    ing.rendimientoActual = ing.rendimientoBase;
+                  });
+                  _guardarDatos(ing);
+                  Navigator.pop(context);
+                },
+                child: const Text('Resetear', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.rojo, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: () {
+                  final nuevo = int.tryParse(controller.text);
+                  if (nuevo != null && nuevo >= 0) {
+                    setState(() {
+                      ing.precioActual = nuevo;
+                      ing.rendimientoActual = tempRendimiento;
+                    });
+                    _guardarDatos(ing);
+                  }
+                  Navigator.pop(context);
+                },
+                child: const Text('Guardar', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        }
       ),
     );
   }

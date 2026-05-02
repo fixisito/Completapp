@@ -6,6 +6,8 @@ import 'screens/juegos_screen.dart';
 import 'services/game_data.dart';
 import 'theme/app_theme.dart';
 
+import 'screens/splash_screen.dart';
+
 void main() {
   runApp(const CompletApp());
 }
@@ -19,7 +21,7 @@ class CompletApp extends StatelessWidget {
       title: 'CompletApp',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      home: const MainNav(),
+      home: const SplashScreen(),
     );
   }
 }

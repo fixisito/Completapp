@@ -133,25 +133,32 @@ class GameData {
 
   // --- Precios de ingredientes ---
   static const _keyPrecioIngrediente = 'precio_v2_';
+  static const _keyRendimientoIngrediente = 'rendimiento_v2_';
 
-  static Future<Map<String, int>> cargarPreciosIngredientes() async {
+  static Future<Map<String, Map<String, int>>> cargarDatosIngredientes() async {
     final prefs = await SharedPreferences.getInstance();
     final prefsKeys = prefs.getKeys();
-    final precios = <String, int>{};
+    final datos = <String, Map<String, int>>{};
     for (final key in prefsKeys) {
       if (key.startsWith(_keyPrecioIngrediente)) {
         final nombre = key.substring(_keyPrecioIngrediente.length);
-        final valor = prefs.getInt(key);
-        if (valor != null) precios[nombre] = valor;
+        final precio = prefs.getInt(key);
+        final rendimiento = prefs.getInt('$_keyRendimientoIngrediente$nombre');
+        
+        if (precio != null) {
+          datos[nombre] = {'precio': precio};
+          if (rendimiento != null) datos[nombre]!['rendimiento'] = rendimiento;
+        }
       }
     }
-    return precios;
+    return datos;
   }
 
-  static Future<void> guardarPrecioIngrediente(String nombre, int precio) async {
+  static Future<void> guardarDatosIngrediente(String nombre, int precio, int rendimiento) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('$_keyPrecioIngrediente$nombre', precio);
+      await prefs.setInt('$_keyRendimientoIngrediente$nombre', rendimiento);
     } catch (_) {}
   }
 
