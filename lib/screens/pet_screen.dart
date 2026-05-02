@@ -27,7 +27,8 @@ class ComidaItem {
 }
 
 class PetScreen extends StatefulWidget {
-  const PetScreen({super.key});
+  final bool isActive;
+  const PetScreen({super.key, required this.isActive});
   @override
   State<PetScreen> createState() => _PetScreenState();
 }
@@ -70,6 +71,14 @@ class _PetScreenState extends State<PetScreen> {
   void initState() {
     super.initState();
     _cargarEstado();
+  }
+
+  @override
+  void didUpdateWidget(PetScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      _cargarEstado();
+    }
   }
 
   @override

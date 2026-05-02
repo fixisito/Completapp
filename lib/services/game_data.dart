@@ -55,8 +55,8 @@ class GameData {
     final ahora = DateTime.now().millisecondsSinceEpoch;
     final segundosPasados = ((ahora - ultimaVez) / 1000).floor();
 
-    double comida = (prefs.getDouble(_keyComida) ?? 80) - (segundosPasados / 30) * 3;
-    double felicidad = (prefs.getDouble(_keyFelicidad) ?? 80) - (segundosPasados / 30) * 2;
+    double comida = (prefs.getDouble(_keyComida) ?? 80) - (segundosPasados ~/ 30) * 3;
+    double felicidad = (prefs.getDouble(_keyFelicidad) ?? 80) - (segundosPasados ~/ 30) * 2;
 
     return {
       'comida': comida.clamp(0.0, 100.0),

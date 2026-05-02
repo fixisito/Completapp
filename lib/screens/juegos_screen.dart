@@ -135,41 +135,6 @@ class _JuegosScreenState extends State<JuegosScreen> with SingleTickerProviderSt
     if (!jugando || pausado) return;
     setState(() => pausado = true);
     _ticker.stop();
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('⏸️ Pausa', style: TextStyle(fontWeight: FontWeight.w900, color: AppColors.cafe), textAlign: TextAlign.center),
-        content: const Text('El juego está pausado.', textAlign: TextAlign.center, style: TextStyle(fontSize: 16)),
-        actions: [
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _terminarJuego(mostrarDialogo: false);
-                  },
-                  child: const Text('Salir', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w800)),
-                ),
-              ),
-              Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.verde, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _reanudarJuego();
-                  },
-                  child: const Text('Continuar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-                ),
-              ),
-            ],
-          )
-        ],
-      ),
-    );
   }
 
   void _reanudarJuego() {
@@ -476,6 +441,44 @@ class _JuegosScreenState extends State<JuegosScreen> with SingleTickerProviderSt
                           ),
                         ),
                       )),
+                      if (pausado)
+                        Container(
+                          decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(20)),
+                          child: Center(
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 40),
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24)),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text('⏸️ Pausa', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.cafe)),
+                                  const SizedBox(height: 12),
+                                  const Text('El juego está pausado.', style: TextStyle(fontSize: 14, color: Colors.grey)),
+                                  const SizedBox(height: 24),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextButton(
+                                          onPressed: () => _terminarJuego(mostrarDialogo: false),
+                                          child: const Text('Salir', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w800)),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.verde, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                                          onPressed: _reanudarJuego,
+                                          child: const Text('Continuar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   );
                 },

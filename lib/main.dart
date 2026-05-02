@@ -69,7 +69,7 @@ class _MainNavState extends State<MainNav> with WidgetsBindingObserver {
     final List<Widget> pantallas = [
       HomeScreen(onTabChange: _cambiarTab, isActive: _paginaActual == 0),
       const CalculadoraScreen(),
-      const PetScreen(),
+      PetScreen(isActive: _paginaActual == 2),
       JuegosScreen(isActive: _paginaActual == 3),
     ];
 
