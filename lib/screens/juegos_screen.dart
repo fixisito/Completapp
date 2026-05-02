@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:math';
 import '../services/game_data.dart';
 import '../theme/app_theme.dart';
+import '../widgets/gradient_header.dart';
+import '../widgets/coin_badge.dart';
 
 enum TipoItem { completo, dorado, cebolla }
 
@@ -52,6 +53,7 @@ class _JuegosScreenState extends State<JuegosScreen> {
   List<_Item> items = [];
   double areaAncho = 0;
   double areaAlto = 0;
+  bool _cargando = true;
 
   @override
   void initState() {
@@ -67,15 +69,17 @@ class _JuegosScreenState extends State<JuegosScreen> {
   }
 
   Future<void> _cargarMejorPuntaje() async {
-    final stats = await GameData.getEstadisticas();
+    final puntaje = await GameData.cargarMejorPuntaje();
     if (!mounted) return;
-    setState(() => mejorPuntaje = stats['mejorPuntaje'] ?? 0);
+    setState(() {
+      mejorPuntaje = puntaje;
+      _cargando = false;
+    });
   }
 
   Future<void> _guardarMejorPuntaje() async {
     if (puntaje > mejorPuntaje) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('mejor_puntaje_atrapa', puntaje);
+      await GameData.guardarMejorPuntaje(puntaje);
     }
   }
 
@@ -232,27 +236,23 @@ class _JuegosScreenState extends State<JuegosScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_cargando) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.blanco,
       body: Column(
         children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 56, 20, 20),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(colors: [AppColors.amarillo, AppColors.naranja], begin: Alignment.topLeft, end: Alignment.bottomRight),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('🎮 Mini Juegos', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.white)),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(99)),
-                  child: Text('🏆 $mejorPuntaje', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
-                ),
-              ],
+          GradientHeader(
+            titulo: '🎮 Mini Juegos',
+            gradiente: const [AppColors.amarillo, AppColors.naranja],
+            accionDerecha: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(99)),
+              child: Text('🏆 $mejorPuntaje', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
             ),
           ),
 
@@ -305,7 +305,7 @@ class _JuegosScreenState extends State<JuegosScreen> {
                   ))),
                   Row(
                     children: [
-                      Text('🪙 $monedasGanadas', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.mostaza)),
+                      CoinBadge(monedas: monedasGanadas, backgroundColor: AppColors.amarillo.withAlpha(77)),
                       const SizedBox(width: 12),
                       Text('$puntaje pts', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.cafe)),
                     ],

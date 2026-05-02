@@ -4,6 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import '../services/game_data.dart';
 import '../theme/app_theme.dart';
+import '../widgets/gradient_header.dart';
+import '../widgets/stat_bar.dart';
+import '../widgets/coin_badge.dart';
 
 class ComidaItem {
   final String nombre;
@@ -42,6 +45,8 @@ class _PetScreenState extends State<PetScreen> {
   double _feedFlash = 0.0;
   bool _statsExpanded = false;
   Map<String, dynamic> _estadisticas = {};
+  List<String> _accesoriosDesbloqueados = [];
+  bool _cargando = true;
 
   static const comidas = [
     ComidaItem(nombre: 'Pan solo', emoji: '🍞', costo: 0, comida: 10, felicidad: 2, exp: 3),
@@ -51,20 +56,19 @@ class _PetScreenState extends State<PetScreen> {
     ComidaItem(nombre: 'Helado', emoji: '🍦', costo: 8, comida: 5, felicidad: 30, exp: 8),
   ];
 
-  final List<Map<String, dynamic>> accesorios = [
-    {'emoji': '🎩', 'nombre': 'Galera', 'desbloqueado': true},
-    {'emoji': '🕶️', 'nombre': 'Lentes', 'desbloqueado': true},
-    {'emoji': '👑', 'nombre': 'Corona', 'desbloqueado': false, 'nivelReq': 3},
-    {'emoji': '🤠', 'nombre': 'Cowboy', 'desbloqueado': false, 'nivelReq': 5},
-    {'emoji': '🎓', 'nombre': 'Graduado', 'desbloqueado': false, 'nivelReq': 7},
-    {'emoji': '🎃', 'nombre': 'Halloween', 'desbloqueado': false, 'nivelReq': 10},
+  final List<Map<String, dynamic>> _accesoriosBase = [
+    {'emoji': '🎩', 'nombre': 'Galera', 'nivelReq': 1},
+    {'emoji': '🕶️', 'nombre': 'Lentes', 'nivelReq': 1},
+    {'emoji': '👑', 'nombre': 'Corona', 'nivelReq': 3},
+    {'emoji': '🤠', 'nombre': 'Cowboy', 'nivelReq': 5},
+    {'emoji': '🎓', 'nombre': 'Graduado', 'nivelReq': 7},
+    {'emoji': '🎃', 'nombre': 'Halloween', 'nivelReq': 10},
   ];
 
   @override
   void initState() {
     super.initState();
     _cargarEstado();
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) => _bajarEstados());
   }
 
   @override
@@ -76,6 +80,7 @@ class _PetScreenState extends State<PetScreen> {
   Future<void> _cargarEstado() async {
     final stats = await GameData.getPetStats();
     final estadisticas = await GameData.getEstadisticas();
+    final desbloqueados = await GameData.cargarAccesoriosDesbloqueados();
     if (!mounted) return;
     setState(() {
       comida = stats['comida'];
@@ -86,11 +91,43 @@ class _PetScreenState extends State<PetScreen> {
       nombrePet = (stats['nombre'] as String).isEmpty ? '' : stats['nombre'];
       accesorioActivo = stats['accesorio'];
       _estadisticas = estadisticas;
+      _accesoriosDesbloqueados = desbloqueados;
+      _cargando = false;
     });
-    _actualizarAccesorios();
+    _sincronizarAccesoriosConNivel();
 
     if (nombrePet.isEmpty && mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _pedirNombre());
+    }
+
+    _inicializarTimer();
+  }
+
+  Future<void> _inicializarTimer() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ultimaVez = prefs.getInt('pet_timestamp') ?? 0;
+    final ahora = DateTime.now().millisecondsSinceEpoch;
+    final segundosTranscurridos = ((ahora - ultimaVez) / 1000).floor();
+
+    if (ultimaVez > 0 && segundosTranscurridos < 300) {
+      final tiempoRestante = 30 - (segundosTranscurridos % 30);
+      if (tiempoRestante > 0 && tiempoRestante < 30) {
+        await Future.delayed(Duration(seconds: tiempoRestante));
+      }
+    }
+
+    if (mounted) {
+      _timer = Timer.periodic(const Duration(seconds: 30), (_) => _bajarEstados());
+    }
+  }
+
+  void _sincronizarAccesoriosConNivel() {
+    for (var acc in _accesoriosBase) {
+      final nivelReq = acc['nivelReq'] as int;
+      if (nivel >= nivelReq && !_accesoriosDesbloqueados.contains(acc['emoji'])) {
+        _accesoriosDesbloqueados.add(acc['emoji']);
+        GameData.guardarAccesorioDesbloqueado(acc['emoji']);
+      }
     }
   }
 
@@ -260,7 +297,7 @@ class _PetScreenState extends State<PetScreen> {
       exp -= expNecesaria;
       nivel++;
       HapticFeedback.mediumImpact();
-      _actualizarAccesorios();
+      _sincronizarAccesoriosConNivel();
       _mostrarToast('🎉 ¡$nombrePet subió al nivel $nivel!');
     }
   }
@@ -268,14 +305,6 @@ class _PetScreenState extends State<PetScreen> {
   Future<void> _recargarMonedas() async {
     final m = await GameData.getMonedas();
     if (mounted) setState(() => monedas = m);
-  }
-
-  void _actualizarAccesorios() {
-    for (var acc in accesorios) {
-      if (!acc['desbloqueado'] && acc.containsKey('nivelReq')) {
-        if (nivel >= acc['nivelReq']) acc['desbloqueado'] = true;
-      }
-    }
   }
 
   void _mostrarToast(String mensaje) {
@@ -307,49 +336,42 @@ class _PetScreenState extends State<PetScreen> {
   String get _expTexto => '$exp / ${nivel * 50} XP';
   double get _expPorcentaje => (exp / (nivel * 50)).clamp(0, 1);
 
+  bool _accesorioDesbloqueado(Map<String, dynamic> acc) {
+    final nivelReq = acc['nivelReq'] as int;
+    return nivel >= nivelReq || _accesoriosDesbloqueados.contains(acc['emoji']);
+  }
+
+  void _equiparAccesorio(String emoji) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      accesorioActivo = accesorioActivo == emoji ? '' : emoji;
+    });
+    _guardarEstado();
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_cargando) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.blanco,
       body: Column(
         children: [
-          // HEADER
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 56, 20, 20),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(colors: [AppColors.verde, Color(0xFF1d8a38)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          GradientHeader(
+            titulo: '🌭 ${nombrePet.isEmpty ? 'Mi Completito' : nombrePet}',
+            gradiente: const [AppColors.verde, Color(0xFF1d8a38)],
+            accionDerecha: Row(
               children: [
-                Flexible(
-                  child: Text('🌭 ${nombrePet.isEmpty ? 'Mi Completito' : nombrePet}',
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(99)),
-                      child: Row(
-                        children: [
-                          const Text('🪙', style: TextStyle(fontSize: 14)),
-                          const SizedBox(width: 4),
-                          Text('$monedas', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(99)),
-                      child: Text('Nv.$nivel', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
-                    ),
-                  ],
+                CoinBadge(monedas: monedas),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(99)),
+                  child: Text('Nv.$nivel', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
                 ),
               ],
             ),
@@ -360,7 +382,6 @@ class _PetScreenState extends State<PetScreen> {
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  // PET
                   GestureDetector(
                     onTap: () => _alimentar(comidas[0]),
                     child: Container(
@@ -387,7 +408,6 @@ class _PetScreenState extends State<PetScreen> {
                     ),
                   ),
 
-                  // NOMBRE
                   GestureDetector(
                     onTap: _editarNombre,
                     child: Row(
@@ -405,24 +425,22 @@ class _PetScreenState extends State<PetScreen> {
 
                   const SizedBox(height: 16),
 
-                  // STATS
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFd0f0d8), width: 2)),
                     child: Column(
                       children: [
-                        _statBarra('🍞 Comida', comida, _colorBarra(comida)),
+                        StatBar(emoji: '🍞', label: 'Comida', valor: comida, color: _colorBarra(comida)),
                         const SizedBox(height: 12),
-                        _statBarra('😄 Felicidad', felicidad, _colorBarra(felicidad)),
+                        StatBar(emoji: '😄', label: 'Felicidad', valor: felicidad, color: _colorBarra(felicidad)),
                         const SizedBox(height: 12),
-                        _statBarra('⭐ Experiencia', _expPorcentaje * 100, AppColors.amarillo, etiqueta: _expTexto),
+                        StatBar(emoji: '⭐', label: 'Experiencia', valor: _expPorcentaje * 100, color: AppColors.amarillo, etiqueta: _expTexto),
                       ],
                     ),
                   ),
 
                   const SizedBox(height: 16),
 
-                  // COMIDAS
                   const Align(alignment: Alignment.centerLeft, child: Text('🍽️ Alimentar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.cafe))),
                   const SizedBox(height: 10),
                   SizedBox(
@@ -464,7 +482,6 @@ class _PetScreenState extends State<PetScreen> {
 
                   const SizedBox(height: 8),
 
-                  // JUGAR
                   SizedBox(
                     width: double.infinity,
                     child: GestureDetector(
@@ -490,7 +507,6 @@ class _PetScreenState extends State<PetScreen> {
 
                   const SizedBox(height: 20),
 
-                  // ESTADÍSTICAS
                   GestureDetector(
                     onTap: () async {
                       final est = await GameData.getEstadisticas();
@@ -536,20 +552,19 @@ class _PetScreenState extends State<PetScreen> {
 
                   const SizedBox(height: 20),
 
-                  // ACCESORIOS
                   const Align(alignment: Alignment.centerLeft, child: Text('🎽 Accesorios', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.cafe))),
                   const SizedBox(height: 10),
                   GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 1.1),
-                    itemCount: accesorios.length,
+                    itemCount: _accesoriosBase.length,
                     itemBuilder: (_, i) {
-                      final acc = accesorios[i];
-                      final desbloqueado = acc['desbloqueado'] as bool;
+                      final acc = _accesoriosBase[i];
+                      final desbloqueado = _accesorioDesbloqueado(acc);
                       final equipado = accesorioActivo == acc['emoji'];
                       return GestureDetector(
-                        onTap: desbloqueado ? () { HapticFeedback.selectionClick(); setState(() => accesorioActivo = equipado ? '' : acc['emoji']); _guardarEstado(); } : null,
+                        onTap: desbloqueado ? () => _equiparAccesorio(acc['emoji']) : null,
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           decoration: BoxDecoration(
@@ -581,28 +596,6 @@ class _PetScreenState extends State<PetScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _statBarra(String label, double valor, Color color, {String? etiqueta}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.cafe)),
-          Text(etiqueta ?? '${valor.toInt()}%', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.mostaza)),
-        ]),
-        const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(99),
-          child: TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: valor / 100),
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeOutCubic,
-            builder: (context, animVal, child) => LinearProgressIndicator(value: animVal, minHeight: 12, backgroundColor: const Color(0xFFf0f0f0), valueColor: AlwaysStoppedAnimation<Color>(color)),
-          ),
-        ),
-      ],
     );
   }
 

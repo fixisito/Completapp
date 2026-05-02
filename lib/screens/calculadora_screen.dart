@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../services/game_data.dart';
 import '../theme/app_theme.dart';
+import '../widgets/gradient_header.dart';
+import '../widgets/counter_button.dart';
 
 class Ingrediente {
   final String nombre;
@@ -43,6 +45,7 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
   int personas = 2;
   List<int> completosPorPersona = [2, 1];
   int recetaSeleccionada = 0;
+  bool _cargando = true;
 
   static const recetas = [
     Receta(nombre: 'Italiano', emoji: '🇮🇹', ingredientes: ['Pan de completo', 'Vienesa', 'Palta', 'Tomate', 'Mayonesa']),
@@ -74,24 +77,24 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
   }
 
   Future<void> _cargarPrecios() async {
-    final prefs = await SharedPreferences.getInstance();
+    final precios = await GameData.cargarPreciosIngredientes();
     if (!mounted) return;
     setState(() {
       for (var ing in ingredientes) {
-        final guardado = prefs.getInt('precio_v2_${ing.nombre}');
-        if (guardado != null) ing.precioActual = guardado;
+        if (precios.containsKey(ing.nombre)) {
+          ing.precioActual = precios[ing.nombre]!;
+        }
       }
+      _cargando = false;
     });
   }
 
   Future<void> _guardarPrecio(Ingrediente ing) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('precio_v2_${ing.nombre}', ing.precioActual);
+    await GameData.guardarPrecioIngrediente(ing.nombre, ing.precioActual);
   }
 
   Future<void> _guardarUltimoTotal() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('ultimos_completos', totalCompletos);
+    await GameData.guardarUltimosCompletos(totalCompletos);
   }
 
   void _aplicarReceta(int index) {
@@ -210,19 +213,19 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_cargando) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.blanco,
       body: Column(
         children: [
-          // HEADER
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 56, 20, 20),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(colors: [AppColors.rojo, AppColors.naranja], begin: Alignment.topLeft, end: Alignment.bottomRight),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
-            ),
-            child: const Text('🧮 Calculadora', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.white)),
+          GradientHeader(
+            titulo: '🧮 Calculadora',
+            gradiente: const [AppColors.rojo, AppColors.naranja],
           ),
 
           Expanded(
@@ -231,7 +234,6 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // PERSONAS
                   _seccionTitulo('👥 Personas'),
                   const SizedBox(height: 10),
                   Container(
@@ -259,12 +261,16 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
                       children: [
                         Text('👤 Persona ${i + 1}', style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.cafe, fontSize: 14)),
                         const Spacer(),
-                        _miniContador(valor: completosPorPersona[i], onMenos: () => cambiarCompletos(i, -1), onMas: () => cambiarCompletos(i, 1)),
+                        CounterButton(
+                          valor: completosPorPersona[i],
+                          onDecrement: () => cambiarCompletos(i, -1),
+                          onIncrement: () => cambiarCompletos(i, 1),
+                          label: completosPorPersona[i] == 1 ? 'completo' : 'completos',
+                        ),
                       ],
                     ),
                   )),
 
-                  // RECETAS
                   const SizedBox(height: 20),
                   _seccionTitulo('📖 Tipo de completo'),
                   const SizedBox(height: 10),
@@ -299,7 +305,6 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
                     ),
                   ),
 
-                  // INGREDIENTES
                   const SizedBox(height: 20),
                   Row(
                     children: [
@@ -354,7 +359,6 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
                     );
                   }),
 
-                  // LISTA DE COMPRAS
                   if (activos.isNotEmpty) ...[
                     const SizedBox(height: 20),
                     _seccionTitulo('🛒 Lista de compras'),
@@ -388,7 +392,6 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
                     ),
                   ],
 
-                  // RESUMEN
                   const SizedBox(height: 20),
                   _seccionTitulo('📋 Resumen'),
                   const SizedBox(height: 10),
@@ -437,21 +440,6 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
         onTap: onTap,
         child: Container(width: 40, height: 40, decoration: BoxDecoration(color: color, shape: BoxShape.circle), child: Icon(icono, color: Colors.white, size: 20)),
       );
-
-  Widget _miniContador({required int valor, required VoidCallback onMenos, required VoidCallback onMas}) =>
-      Row(children: [
-        GestureDetector(
-          onTap: onMenos,
-          child: Container(width: 28, height: 28, decoration: BoxDecoration(color: const Color(0xFFf5e8d0), borderRadius: BorderRadius.circular(99)), child: const Icon(Icons.remove, size: 16, color: AppColors.cafe)),
-        ),
-        SizedBox(width: 32, child: Center(child: Text('$valor', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.cafe)))),
-        GestureDetector(
-          onTap: onMas,
-          child: Container(width: 28, height: 28, decoration: BoxDecoration(color: const Color(0xFFf5e8d0), borderRadius: BorderRadius.circular(99)), child: const Icon(Icons.add, size: 16, color: AppColors.cafe)),
-        ),
-        const SizedBox(width: 8),
-        Text(valor == 1 ? 'completo' : 'completos', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.mostaza)),
-      ]);
 
   Widget _filaResumen(String label, String valor) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 5),

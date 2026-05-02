@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/game_data.dart';
 import '../theme/app_theme.dart';
+import '../widgets/gradient_header.dart';
+import '../widgets/menu_card.dart';
+import '../widgets/coin_badge.dart';
 
 class HomeScreen extends StatefulWidget {
   final void Function(int) onTabChange;
@@ -18,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int monedas = 0;
   int ultimosCompletos = 0;
   String nombrePet = 'Completito';
+  bool _cargando = true;
 
   @override
   void initState() {
@@ -54,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       monedas = stats['monedas'];
       nombrePet = (stats['nombre'] as String).isEmpty ? 'Completito' : stats['nombre'];
       ultimosCompletos = 0;
+      _cargando = false;
     });
   }
 
@@ -79,57 +84,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (_cargando) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.blanco,
       body: Column(
         children: [
-          // HEADER
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(24, 56, 24, 24),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [AppColors.rojo, AppColors.naranja],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
-            ),
+          GradientHeader(
+            titulo: 'CompletApp 🌭',
+            gradiente: const [AppColors.rojo, AppColors.naranja],
+            accionDerecha: CoinBadge(monedas: monedas),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('CompletApp 🌭',
-                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      DateTime.now().hour < 12
-                          ? '¡Buenos días!'
-                          : DateTime.now().hour < 20
-                          ? '¡Buenas tardes!'
-                          : '¡Buenas noches!',
-                      style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Row(
-                    children: [
-                      const Text('🪙', style: TextStyle(fontSize: 16)),
-                      const SizedBox(width: 4),
-                      Text('$monedas',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
-                      ),
-                    ],
-                  ),
+                Text(
+                  DateTime.now().hour < 12
+                      ? '¡Buenos días!'
+                      : DateTime.now().hour < 20
+                      ? '¡Buenas tardes!'
+                      : '¡Buenas noches!',
+                  style: const TextStyle(color: AppColors.mostaza, fontSize: 14, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -142,7 +123,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
 
-                  // TARJETA PET
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -239,7 +219,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                   const SizedBox(height: 14),
 
-                  _MenuCard(
+                  MenuCard(
                     emoji: '🧮',
                     titulo: 'Calculadora',
                     subtitulo: '¿Cuántos completos necesitas?',
@@ -251,7 +231,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   Row(
                     children: [
                       Expanded(
-                        child: _MenuCard(
+                        child: MenuCard(
                           emoji: '🌭',
                           titulo: nombrePet,
                           subtitulo: 'Nivel $nivel',
@@ -261,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: _MenuCard(
+                        child: MenuCard(
                           emoji: '🎮',
                           titulo: 'Mini Juegos',
                           subtitulo: 'Gana monedas 🪙',
@@ -302,78 +282,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.mostaza),
         ),
       ],
-    );
-  }
-}
-
-class _MenuCard extends StatefulWidget {
-  final String emoji;
-  final String titulo;
-  final String subtitulo;
-  final List<Color> gradiente;
-  final VoidCallback onTap;
-
-  const _MenuCard({
-    required this.emoji,
-    required this.titulo,
-    required this.subtitulo,
-    required this.gradiente,
-    required this.onTap,
-  });
-
-  @override
-  State<_MenuCard> createState() => _MenuCardState();
-}
-
-class _MenuCardState extends State<_MenuCard> {
-  double _scale = 1.0;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _scale = 0.95),
-      onTapUp: (_) {
-        setState(() => _scale = 1.0);
-        widget.onTap();
-      },
-      onTapCancel: () => setState(() => _scale = 1.0),
-      child: AnimatedScale(
-        scale: _scale,
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOut,
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: widget.gradiente,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: widget.gradiente[0].withAlpha(89),
-                blurRadius: 12,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(widget.emoji, style: const TextStyle(fontSize: 36)),
-              const SizedBox(height: 8),
-              Text(widget.titulo,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white),
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(widget.subtitulo,
-                style: const TextStyle(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
