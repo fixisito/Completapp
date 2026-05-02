@@ -130,4 +130,87 @@ class GameData {
       'rachaDias': prefs.getInt(_keyRachaDias) ?? 0,
     };
   }
+
+  // --- Precios de ingredientes ---
+  static const _keyPrecioIngrediente = 'precio_v2_';
+
+  static Future<Map<String, int>> cargarPreciosIngredientes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final prefsKeys = prefs.getKeys();
+    final precios = <String, int>{};
+    for (final key in prefsKeys) {
+      if (key.startsWith(_keyPrecioIngrediente)) {
+        final nombre = key.substring(_keyPrecioIngrediente.length);
+        final valor = prefs.getInt(key);
+        if (valor != null) precios[nombre] = valor;
+      }
+    }
+    return precios;
+  }
+
+  static Future<void> guardarPrecioIngrediente(String nombre, int precio) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('$_keyPrecioIngrediente$nombre', precio);
+    } catch (_) {}
+  }
+
+  // --- Últimos completos calculados ---
+  static const _keyUltimosCompletos = 'ultimos_completos';
+
+  static Future<int> cargarUltimosCompletos() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getInt(_keyUltimosCompletos) ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static Future<void> guardarUltimosCompletos(int total) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_keyUltimosCompletos, total);
+    } catch (_) {}
+  }
+
+  // --- Mejor puntaje del mini juego ---
+  static Future<int> cargarMejorPuntaje() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getInt('mejor_puntaje_atrapa') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static Future<void> guardarMejorPuntaje(int puntaje) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('mejor_puntaje_atrapa', puntaje);
+    } catch (_) {}
+  }
+
+  // --- Accesorios desbloqueados ---
+  static const _keyAccesoriosDesbloqueados = 'accesorios_desbloqueados';
+
+  static Future<List<String>> cargarAccesoriosDesbloqueados() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getStringList(_keyAccesoriosDesbloqueados) ?? [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> guardarAccesorioDesbloqueado(String emoji) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final actuales = prefs.getStringList(_keyAccesoriosDesbloqueados) ?? [];
+      if (!actuales.contains(emoji)) {
+        actuales.add(emoji);
+        await prefs.setStringList(_keyAccesoriosDesbloqueados, actuales);
+      }
+    } catch (_) {}
+  }
 }
