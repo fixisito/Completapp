@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../services/game_data.dart';
 import '../theme/app_theme.dart';
 import '../widgets/gradient_header.dart';
@@ -13,7 +14,6 @@ class Ingrediente {
   final List<int> opcionesRendimiento;
   int precioActual;
   int rendimientoActual;
-  bool activo;
 
   Ingrediente({
     required this.nombre,
@@ -24,13 +24,11 @@ class Ingrediente {
     this.opcionesRendimiento = const [],
     int? precioActual,
     int? rendimientoActual,
-    this.activo = false,
   }) : precioActual = precioActual ?? precioBase,
        rendimientoActual = rendimientoActual ?? rendimientoBase;
 
-  double get costoPorCompleto => precioActual / rendimientoActual;
-  int unidadesNecesarias(int totalCompletos) => (totalCompletos / rendimientoActual).ceil();
-  int costoParaCompletos(int totalCompletos) => unidadesNecesarias(totalCompletos) * precioActual;
+  int unidadesNecesarias(int requeridos) => (requeridos / rendimientoActual).ceil();
+  int costoPara(int requeridos) => unidadesNecesarias(requeridos) * precioActual;
 }
 
 class Receta {
@@ -40,6 +38,20 @@ class Receta {
   const Receta({required this.nombre, required this.emoji, required this.ingredientes});
 }
 
+class Comensal {
+  int id;
+  int cantidadCompletos;
+  int recetaIndex;
+  List<String> ingredientesCustom;
+
+  Comensal({
+    required this.id,
+    this.cantidadCompletos = 1,
+    this.recetaIndex = 0,
+    List<String>? ingredientesCustom,
+  }) : ingredientesCustom = ingredientesCustom ?? [];
+}
+
 class CalculadoraScreen extends StatefulWidget {
   const CalculadoraScreen({super.key});
   @override
@@ -47,9 +59,8 @@ class CalculadoraScreen extends StatefulWidget {
 }
 
 class _CalculadoraScreenState extends State<CalculadoraScreen> {
-  int personas = 2;
-  List<int> completosPorPersona = [2, 1];
-  int recetaSeleccionada = 0;
+  final TextEditingController _personasCtrl = TextEditingController(text: '2');
+  List<Comensal> comensales = [];
   bool _cargando = true;
 
   static const recetas = [
@@ -64,6 +75,11 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
   @override
   void initState() {
     super.initState();
+    comensales = [
+      Comensal(id: 1, cantidadCompletos: 2, recetaIndex: 0),
+      Comensal(id: 2, cantidadCompletos: 1, recetaIndex: 0),
+    ];
+    
     ingredientes = [
       Ingrediente(nombre: 'Pan de completo', emoji: '🍞', unidadCompra: 'Paquetes', precioBase: 2300, rendimientoBase: 10, opcionesRendimiento: [5, 6, 8, 10, 20]),
       Ingrediente(nombre: 'Vienesa', emoji: '🌭', unidadCompra: 'Paquetes', precioBase: 1400, rendimientoBase: 5, opcionesRendimiento: [5, 10, 20]),
@@ -78,7 +94,6 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
       Ingrediente(nombre: 'Ketchup', emoji: '🍅', unidadCompra: 'Doypack', precioBase: 2500, rendimientoBase: 25, opcionesRendimiento: [10, 15, 25, 40]),
     ];
     _cargarPrecios();
-    _aplicarReceta(0);
   }
 
   Future<void> _cargarPrecios() async {
@@ -97,60 +112,58 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
     });
   }
 
-  Future<void> _guardarDatos(Ingrediente ing) async {
+  Future<void> _guardarDatosIng(Ingrediente ing) async {
     await GameData.guardarDatosIngrediente(ing.nombre, ing.precioActual, ing.rendimientoActual);
   }
 
-  Future<void> _guardarUltimoTotal() async {
-    await GameData.guardarUltimosCompletos(totalCompletos);
+  void _ajustarPersonasStr(String val) {
+    int parsed = int.tryParse(val) ?? comensales.length;
+    _ajustarPersonas(parsed.clamp(1, 100));
   }
 
-  void _aplicarReceta(int index) {
+  void _ajustarPersonas(int nuevasPersonas) {
     setState(() {
-      recetaSeleccionada = index;
-      if (index < 3) {
-        final receta = recetas[index];
-        for (var ing in ingredientes) {
-          ing.activo = receta.ingredientes.contains(ing.nombre);
-        }
+      while (comensales.length < nuevasPersonas) {
+        comensales.add(Comensal(id: comensales.length + 1, recetaIndex: comensales.isEmpty ? 0 : comensales.first.recetaIndex));
+      }
+      if (comensales.length > nuevasPersonas) {
+        comensales = comensales.sublist(0, nuevasPersonas);
+      }
+      _personasCtrl.text = comensales.length.toString();
+    });
+    GameData.guardarUltimosCompletos(totalCompletosGlobales);
+  }
+
+  void _asignarRecetaGlobal(int index) {
+    setState(() {
+      for (var c in comensales) {
+        c.recetaIndex = index;
       }
     });
   }
 
-  void cambiarPersonas(int delta) {
-    setState(() {
-      personas = (personas + delta).clamp(1, 20);
-      while (completosPorPersona.length < personas) {
-        completosPorPersona.add(1);
+  int get totalCompletosGlobales => comensales.fold(0, (sum, c) => sum + c.cantidadCompletos);
+
+  Map<String, int> get _ingredientesRequeridos {
+    final reqs = <String, int>{};
+    for (var c in comensales) {
+      if (c.cantidadCompletos == 0) continue;
+      final ings = c.recetaIndex < 3 ? recetas[c.recetaIndex].ingredientes : c.ingredientesCustom;
+      for (var ing in ings) {
+        reqs[ing] = (reqs[ing] ?? 0) + c.cantidadCompletos;
       }
-      completosPorPersona = completosPorPersona.sublist(0, personas);
-    });
-    _guardarUltimoTotal();
-  }
-
-  void cambiarCompletos(int index, int delta) {
-    setState(() {
-      completosPorPersona[index] = (completosPorPersona[index] + delta).clamp(1, 10);
-    });
-    _guardarUltimoTotal();
-  }
-
-  int get totalCompletos => completosPorPersona.fold(0, (a, b) => a + b);
-
-  List<Ingrediente> get activos => ingredientes.where((i) => i.activo).toList();
-
-  int get costoPorCompleto {
-    double costo = 0;
-    for (var ing in activos) {
-      costo += ing.costoPorCompleto;
     }
-    return costo.ceil();
+    return reqs;
   }
 
-  int get costoTotalReal {
+  int get costoTotalGlobal {
     int total = 0;
-    for (var ing in activos) {
-      total += ing.costoParaCompletos(totalCompletos);
+    final reqs = _ingredientesRequeridos;
+    for (var ing in ingredientes) {
+      final cantidad = reqs[ing.nombre] ?? 0;
+      if (cantidad > 0) {
+        total += ing.costoPara(cantidad);
+      }
     }
     return total;
   }
@@ -159,7 +172,115 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
     return '\$${valor.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => '.')}';
   }
 
-  void _editarPrecio(Ingrediente ing) {
+  void _mostrarEditorCustom(Comensal c) {
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Text('Ingredientes Persona ${c.id}', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.cafe)),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 400,
+              child: ListView(
+                shrinkWrap: true,
+                children: ingredientes.map((ing) {
+                  final tiene = c.ingredientesCustom.contains(ing.nombre);
+                  return CheckboxListTile(
+                    activeColor: AppColors.rojo,
+                    title: Row(
+                      children: [
+                        Text(ing.emoji, style: const TextStyle(fontSize: 18)),
+                        const SizedBox(width: 8),
+                        Text(ing.nombre, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      ],
+                    ),
+                    value: tiene,
+                    onChanged: (val) {
+                      setStateDialog(() {
+                        if (val == true) {
+                          c.ingredientesCustom.add(ing.nombre);
+                        } else {
+                          c.ingredientesCustom.remove(ing.nombre);
+                        }
+                      });
+                      setState(() {});
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar', style: TextStyle(color: AppColors.cafe, fontWeight: FontWeight.w800))),
+            ],
+          );
+        }
+      ),
+    );
+  }
+
+  void _abrirAjustesPrecios() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        height: MediaQuery.of(context).size.height * 0.8,
+        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+        child: Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Text('Ajustes de Precios y Empaques', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.cafe)),
+            ),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                itemCount: ingredientes.length,
+                itemBuilder: (ctx, i) {
+                  final ing = ingredientes[i];
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(color: AppColors.crema, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.amarillo, width: 2)),
+                    child: Row(
+                      children: [
+                        Text(ing.emoji, style: const TextStyle(fontSize: 20)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(ing.nombre, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppColors.cafe)),
+                              Text('${ing.unidadCompra} - Rinde: ${ing.rendimientoActual}', style: const TextStyle(fontSize: 10, color: AppColors.mostaza)),
+                            ],
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _editarPrecioIngrediente(ing);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(color: AppColors.amarillo, borderRadius: BorderRadius.circular(99)),
+                            child: Text(formatPesos(ing.precioActual), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.cafe)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _editarPrecioIngrediente(Ingrediente ing) {
     final controller = TextEditingController(text: ing.precioActual.toString());
     int tempRendimiento = ing.rendimientoActual;
 
@@ -226,7 +347,7 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
                     ing.precioActual = ing.precioBase;
                     ing.rendimientoActual = ing.rendimientoBase;
                   });
-                  _guardarDatos(ing);
+                  _guardarDatosIng(ing);
                   Navigator.pop(context);
                 },
                 child: const Text('Resetear', style: TextStyle(color: Colors.grey)),
@@ -240,7 +361,7 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
                       ing.precioActual = nuevo;
                       ing.rendimientoActual = tempRendimiento;
                     });
-                    _guardarDatos(ing);
+                    _guardarDatosIng(ing);
                   }
                   Navigator.pop(context);
                 },
@@ -249,244 +370,6 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
             ],
           );
         }
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_cargando) {
-      return Scaffold(
-        backgroundColor: AppColors.blanco,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('🧮', style: TextStyle(fontSize: 60)),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: 120,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(99),
-                  child: const LinearProgressIndicator(minHeight: 4, color: AppColors.rojo, backgroundColor: AppColors.crema),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: AppColors.blanco,
-      body: Column(
-        children: [
-          GradientHeader(
-            titulo: '🧮 Calculadora',
-            gradiente: const [AppColors.rojo, AppColors.naranja],
-          ),
-
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _seccionTitulo('👥 Personas'),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: AppColors.crema, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.amarillo, width: 2)),
-                    child: Row(
-                      children: [
-                        _botonContador(Icons.remove, AppColors.rojo, () => cambiarPersonas(-1)),
-                        Expanded(child: Center(child: Text('$personas', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: AppColors.cafe)))),
-                        _botonContador(Icons.add, AppColors.verde, () => cambiarPersonas(1)),
-                        const SizedBox(width: 10),
-                        const Text('personas', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.mostaza)),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-                  _seccionTitulo('🌭 Completos por persona'),
-                  const SizedBox(height: 10),
-                  ...List.generate(personas, (i) => Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFf0e0c0), width: 2)),
-                    child: Row(
-                      children: [
-                        Text('👤 Persona ${i + 1}', style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.cafe, fontSize: 14)),
-                        const Spacer(),
-                        CounterButton(
-                          valor: completosPorPersona[i],
-                          onDecrement: () => cambiarCompletos(i, -1),
-                          onIncrement: () => cambiarCompletos(i, 1),
-                          label: completosPorPersona[i] == 1 ? 'completo' : 'completos',
-                        ),
-                      ],
-                    ),
-                  )),
-
-                  const SizedBox(height: 20),
-                  _seccionTitulo('📖 Tipo de completo'),
-                  const SizedBox(height: 10),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: List.generate(recetas.length, (i) {
-                        final r = recetas[i];
-                        final selected = recetaSeleccionada == i;
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: GestureDetector(
-                            onTap: () => _aplicarReceta(i),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: selected ? AppColors.rojo : Colors.white,
-                                borderRadius: BorderRadius.circular(99),
-                                border: Border.all(color: selected ? AppColors.rojo : const Color(0xFFe0d0b0), width: 2),
-                              ),
-                              child: Row(
-                                children: [
-                                  Text(r.emoji, style: const TextStyle(fontSize: 18)),
-                                  const SizedBox(width: 6),
-                                  Text(r.nombre, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: selected ? Colors.white : AppColors.cafe)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      }),
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      _seccionTitulo('🧄 Ingredientes'),
-                      const Spacer(),
-                      const Text('Toca precio para editar', style: TextStyle(fontSize: 10, color: AppColors.mostaza, fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  ...ingredientes.map((ing) {
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: ing.activo ? AppColors.crema : Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: ing.activo ? AppColors.amarillo : const Color(0xFFf0e0c0), width: 2),
-                      ),
-                      child: Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                ing.activo = !ing.activo;
-                                recetaSeleccionada = 3;
-                              });
-                            },
-                            child: Icon(ing.activo ? Icons.check_circle_rounded : Icons.circle_outlined, color: ing.activo ? AppColors.verde : Colors.grey, size: 22),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(ing.emoji, style: const TextStyle(fontSize: 18)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(ing.nombre, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: ing.activo ? AppColors.cafe : Colors.grey)),
-                                Text(ing.unidadCompra, style: TextStyle(fontSize: 10, color: ing.activo ? AppColors.mostaza : Colors.grey)),
-                              ],
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () => _editarPrecio(ing),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(color: ing.activo ? AppColors.amarillo : const Color(0xFFf0f0f0), borderRadius: BorderRadius.circular(99)),
-                              child: Text(formatPesos(ing.precioActual), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: ing.activo ? AppColors.cafe : Colors.grey)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-
-                  if (activos.isNotEmpty) ...[
-                    const SizedBox(height: 20),
-                    _seccionTitulo('🛒 Lista de compras'),
-                    const SizedBox(height: 4),
-                    Text('Para $totalCompletos completos necesitas:', style: const TextStyle(fontSize: 12, color: AppColors.mostaza, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 10),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFd0f0d8), width: 2),
-                      ),
-                      child: Column(
-                        children: activos.map((ing) {
-                          final uds = ing.unidadesNecesarias(totalCompletos);
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Row(
-                              children: [
-                                Text(ing.emoji, style: const TextStyle(fontSize: 16)),
-                                const SizedBox(width: 8),
-                                Expanded(child: Text('$uds × ${ing.nombre}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.cafe))),
-                                Text(formatPesos(ing.costoParaCompletos(totalCompletos)), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.mostaza)),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 20),
-                  _seccionTitulo('📋 Resumen'),
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(colors: [AppColors.rojo, AppColors.naranja], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Column(
-                      children: [
-                        _filaResumen('👥 Personas', '$personas'),
-                        _filaResumen('🌭 Total completos', '$totalCompletos'),
-                        _filaResumen('💵 Costo aprox. por completo', formatPesos(costoPorCompleto)),
-                        const Divider(color: Colors.white30, height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('💰 Total a gastar', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900)),
-                            Text(formatPesos(costoTotalReal), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        const Align(
-                          alignment: Alignment.centerRight,
-                          child: Text('(Comprando unidades completas)', style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w600)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -509,4 +392,254 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
       ],
     ),
   );
+
+  @override
+  Widget build(BuildContext context) {
+    if (_cargando) {
+      return const Scaffold(backgroundColor: AppColors.blanco, body: Center(child: CircularProgressIndicator(color: AppColors.rojo)));
+    }
+
+    final reqs = _ingredientesRequeridos;
+    final totalAproxUnidad = totalCompletosGlobales > 0 ? (costoTotalGlobal / totalCompletosGlobales).ceil() : 0;
+
+    return Scaffold(
+      backgroundColor: AppColors.blanco,
+      body: Column(
+        children: [
+          GradientHeader(titulo: '🧮 Calculadora', gradiente: const [AppColors.rojo, AppColors.naranja]),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // --- SECCIÓN A: Configuración Global ---
+                  _seccionTitulo('👥 ¿Cuántas personas comerán?'),
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(color: AppColors.crema, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.amarillo, width: 2)),
+                    child: Row(
+                      children: [
+                        _botonContador(Icons.remove, AppColors.rojo, () => _ajustarPersonas(comensales.length - 1)),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: TextField(
+                            controller: _personasCtrl,
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: AppColors.cafe),
+                            decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
+                            onSubmitted: _ajustarPersonasStr,
+                            onTapOutside: (_) => _ajustarPersonasStr(_personasCtrl.text),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        _botonContador(Icons.add, AppColors.verde, () => _ajustarPersonas(comensales.length + 1)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Asignación rápida (A todos):', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.mostaza)),
+                  const SizedBox(height: 8),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: List.generate(recetas.length, (i) {
+                        final r = recetas[i];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: GestureDetector(
+                            onTap: () => _asignarRecetaGlobal(i),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(99),
+                                border: Border.all(color: const Color(0xFFe0d0b0), width: 1.5),
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(r.emoji, style: const TextStyle(fontSize: 16)),
+                                  const SizedBox(width: 6),
+                                  Text(r.nombre, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppColors.cafe)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+
+                  const SizedBox(height: 32),
+                  // --- SECCIÓN B: Detalle por Persona ---
+                  _seccionTitulo('👤 Detalle por Persona'),
+                  const SizedBox(height: 10),
+                  ListView.builder(
+                    padding: EdgeInsets.zero,
+                    physics: const NeverScrollableScrollPhysics(),
+                    shrinkWrap: true,
+                    itemCount: comensales.length,
+                    itemBuilder: (ctx, i) {
+                      final c = comensales[i];
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFf0e0c0), width: 2)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text('Persona ${c.id}', style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.cafe, fontSize: 14)),
+                                const Spacer(),
+                                CounterButton(
+                                  valor: c.cantidadCompletos,
+                                  onDecrement: () => setState(() => c.cantidadCompletos = (c.cantidadCompletos - 1).clamp(0, 10)),
+                                  onIncrement: () => setState(() => c.cantidadCompletos = (c.cantidadCompletos + 1).clamp(0, 10)),
+                                  label: 'uds',
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                const Text('Receta:', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Container(
+                                    height: 36,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    decoration: BoxDecoration(color: AppColors.crema, borderRadius: BorderRadius.circular(8)),
+                                    child: DropdownButtonHideUnderline(
+                                      child: DropdownButton<int>(
+                                        value: c.recetaIndex,
+                                        isExpanded: true,
+                                        icon: const Icon(Icons.arrow_drop_down, color: AppColors.rojo),
+                                        items: List.generate(recetas.length, (ri) => DropdownMenuItem(
+                                          value: ri,
+                                          child: Text('${recetas[ri].emoji} ${recetas[ri].nombre}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.cafe)),
+                                        )),
+                                        onChanged: (val) {
+                                          if (val != null) setState(() => c.recetaIndex = val);
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                if (c.recetaIndex == 3) ...[
+                                  const SizedBox(width: 8),
+                                  GestureDetector(
+                                    onTap: () => _mostrarEditorCustom(c),
+                                    child: Container(
+                                      height: 36,
+                                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                                      decoration: BoxDecoration(color: AppColors.amarillo, borderRadius: BorderRadius.circular(8)),
+                                      child: const Center(child: Text('Editar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.cafe))),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            )
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 20),
+                  // --- SECCIÓN C: Lista de Compras y Resumen ---
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _seccionTitulo('🛒 Lista Consolidada'),
+                      GestureDetector(
+                        onTap: _abrirAjustesPrecios,
+                        child: const Row(
+                          children: [
+                            Icon(Icons.settings, size: 16, color: AppColors.rojo),
+                            SizedBox(width: 4),
+                            Text('Ajustar Precios', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.rojo)),
+                          ],
+                        ),
+                      )
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (totalCompletosGlobales == 0)
+                    const Text('Nadie va a comer completos 😔', style: TextStyle(color: Colors.grey))
+                  else
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFd0f0d8), width: 2)),
+                      child: Column(
+                        children: ingredientes.map((ing) {
+                          final cant = reqs[ing.nombre] ?? 0;
+                          if (cant == 0) return const SizedBox.shrink();
+                          final udsComprar = ing.unidadesNecesarias(cant);
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Row(
+                              children: [
+                                Text(ing.emoji, style: const TextStyle(fontSize: 18)),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('$udsComprar × ${ing.nombre}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.cafe)),
+                                      Text('Requiere $cant uds (Rinde ${ing.rendimientoActual})', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                                    ],
+                                  ),
+                                ),
+                                Text(formatPesos(ing.costoPara(cant)), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: AppColors.verde)),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+
+                  const SizedBox(height: 20),
+                  _seccionTitulo('📋 Resumen Final'),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(colors: [AppColors.rojo, AppColors.naranja], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Column(
+                      children: [
+                        _filaResumen('👥 Personas', '${comensales.length}'),
+                        _filaResumen('🌭 Total completos', '$totalCompletosGlobales'),
+                        _filaResumen('💵 Costo aprox. por unidad', formatPesos(totalAproxUnidad)),
+                        const Divider(color: Colors.white30, height: 20),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('💰 Gran Total', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)),
+                            Text(formatPesos(costoTotalGlobal), style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        const Align(
+                          alignment: Alignment.centerRight,
+                          child: Text('(Comprando empaques completos)', style: TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.w600)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
