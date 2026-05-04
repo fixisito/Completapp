@@ -131,35 +131,65 @@ class GameData {
     };
   }
 
-  // --- Precios de ingredientes ---
-  static const _keyPrecioIngrediente = 'precio_v2_';
-  static const _keyRendimientoIngrediente = 'rendimiento_v2_';
+  // --- Precios de ingredientes multi-formato ---
+  static const _keyPrecioIngredienteV3 = 'precio_v3_';
 
   static Future<Map<String, Map<String, int>>> cargarDatosIngredientes() async {
     final prefs = await SharedPreferences.getInstance();
     final prefsKeys = prefs.getKeys();
     final datos = <String, Map<String, int>>{};
     for (final key in prefsKeys) {
-      if (key.startsWith(_keyPrecioIngrediente)) {
-        final nombre = key.substring(_keyPrecioIngrediente.length);
-        final precio = prefs.getInt(key);
-        final rendimiento = prefs.getInt('$_keyRendimientoIngrediente$nombre');
-        
-        if (precio != null) {
-          datos[nombre] = {'precio': precio};
-          if (rendimiento != null) datos[nombre]!['rendimiento'] = rendimiento;
+      if (key.startsWith(_keyPrecioIngredienteV3)) {
+        final rest = key.substring(_keyPrecioIngredienteV3.length);
+        final parts = rest.split('|');
+        if (parts.length == 2) {
+          final nombreIngrediente = parts[0];
+          final nombreFormato = parts[1];
+          final precio = prefs.getInt(key);
+          if (precio != null) {
+            datos.putIfAbsent(nombreIngrediente, () => {});
+            datos[nombreIngrediente]![nombreFormato] = precio;
+          }
         }
       }
     }
     return datos;
   }
 
-  static Future<void> guardarDatosIngrediente(String nombre, int precio, int rendimiento) async {
+  static Future<void> guardarDatosIngrediente(String ingrediente, String formato, int precio) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('$_keyPrecioIngrediente$nombre', precio);
-      await prefs.setInt('$_keyRendimientoIngrediente$nombre', rendimiento);
-    } catch (_) {}
+      await prefs.setInt('$_keyPrecioIngredienteV3$ingrediente|$formato', precio);
+    } catch (e) {
+      // ignore: avoid_print
+      print('Error guardando precio de ingrediente: $e');
+    }
+  }
+
+  static const _keyFormatoBloqueado = 'formato_bloqueado_v3_';
+
+  static Future<Map<String, String>> cargarFormatosBloqueados() async {
+    final prefs = await SharedPreferences.getInstance();
+    final prefsKeys = prefs.getKeys();
+    final datos = <String, String>{};
+    for (final key in prefsKeys) {
+      if (key.startsWith(_keyFormatoBloqueado)) {
+        final nombreIngrediente = key.substring(_keyFormatoBloqueado.length);
+        final formato = prefs.getString(key);
+        if (formato != null) datos[nombreIngrediente] = formato;
+      }
+    }
+    return datos;
+  }
+
+  static Future<void> guardarFormatoBloqueado(String ingrediente, String formato) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_keyFormatoBloqueado$ingrediente', formato);
+  }
+  
+  static Future<void> resetearFormatoBloqueado(String ingrediente) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('$_keyFormatoBloqueado$ingrediente');
   }
 
   // --- Últimos completos calculados ---

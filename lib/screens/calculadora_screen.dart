@@ -1,34 +1,60 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/game_data.dart';
 import '../theme/app_theme.dart';
 import '../widgets/gradient_header.dart';
 import '../widgets/counter_button.dart';
 
+class FormatoCompra {
+  final String nombre;
+  final int rendimiento;
+  final bool esUnidad;
+  final int? pesoGramos;
+  final int precioBase;
+  int precioActual;
+
+  FormatoCompra(this.nombre, this.rendimiento, this.precioBase, {this.esUnidad = false, this.pesoGramos})
+      : precioActual = precioBase;
+}
+
 class Ingrediente {
   final String nombre;
   final String emoji;
-  final String unidadCompra;
-  final int precioBase;
-  final int rendimientoBase;
-  final List<int> opcionesRendimiento;
-  int precioActual;
-  int rendimientoActual;
+  final List<FormatoCompra> formatos;
+  int formatoSeleccionadoIndex;
+  bool formatoBloqueadoPorUsuario;
 
   Ingrediente({
     required this.nombre,
     required this.emoji,
-    required this.unidadCompra,
-    required this.precioBase,
-    required this.rendimientoBase,
-    this.opcionesRendimiento = const [],
-    int? precioActual,
-    int? rendimientoActual,
-  }) : precioActual = precioActual ?? precioBase,
-       rendimientoActual = rendimientoActual ?? rendimientoBase;
+    required this.formatos,
+    this.formatoSeleccionadoIndex = 0,
+    this.formatoBloqueadoPorUsuario = false,
+  });
 
-  int unidadesNecesarias(int requeridos) => (requeridos / rendimientoActual).ceil();
+  FormatoCompra get formatoActual => formatos[formatoSeleccionadoIndex];
+  int get rendimientoActual => formatoActual.rendimiento;
+  String get unidadCompra => formatoActual.nombre;
+  int get precioActual => formatoActual.precioActual;
+
+  int unidadesNecesarias(int requeridos) => (requeridos == 0 || rendimientoActual == 0) ? 0 : (requeridos / rendimientoActual).ceil();
   int costoPara(int requeridos) => unidadesNecesarias(requeridos) * precioActual;
+
+  void autoSeleccionarFormato(int requeridos) {
+    if (formatoBloqueadoPorUsuario || requeridos <= 0) return;
+    int bestIndex = -1;
+    for (int i = 0; i < formatos.length; i++) {
+      if (formatos[i].rendimiento >= requeridos) {
+        bestIndex = i;
+        break;
+      }
+    }
+    if (bestIndex == -1) {
+      bestIndex = formatos.length - 1;
+    }
+    formatoSeleccionadoIndex = bestIndex;
+  }
 }
 
 class Receta {
@@ -59,7 +85,7 @@ class CalculadoraScreen extends StatefulWidget {
 }
 
 class _CalculadoraScreenState extends State<CalculadoraScreen> {
-  final TextEditingController _personasCtrl = TextEditingController(text: '2');
+  final TextEditingController _personasCtrl = TextEditingController(text: '0');
   List<Comensal> comensales = [];
   bool _cargando = true;
 
@@ -75,36 +101,67 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
   @override
   void initState() {
     super.initState();
-    comensales = [
-      Comensal(id: 1, cantidadCompletos: 2, recetaIndex: 0),
-      Comensal(id: 2, cantidadCompletos: 1, recetaIndex: 0),
-    ];
+    comensales = [];
     
     ingredientes = [
-      Ingrediente(nombre: 'Pan de completo', emoji: '🍞', unidadCompra: 'Paquetes', precioBase: 2300, rendimientoBase: 10, opcionesRendimiento: [5, 6, 8, 10, 20]),
-      Ingrediente(nombre: 'Vienesa', emoji: '🌭', unidadCompra: 'Paquetes', precioBase: 1400, rendimientoBase: 5, opcionesRendimiento: [5, 10, 20]),
-      Ingrediente(nombre: 'Palta', emoji: '🥑', unidadCompra: 'A granel (uds)', precioBase: 1200, rendimientoBase: 4, opcionesRendimiento: [2, 3, 4, 5, 8]),
-      Ingrediente(nombre: 'Tomate', emoji: '🍅', unidadCompra: 'A granel (uds)', precioBase: 400, rendimientoBase: 5, opcionesRendimiento: [3, 4, 5, 6, 10]),
-      Ingrediente(nombre: 'Mayonesa', emoji: '🫙', unidadCompra: 'Doypack', precioBase: 2200, rendimientoBase: 25, opcionesRendimiento: [10, 15, 25, 40]),
-      Ingrediente(nombre: 'Mostaza', emoji: '🟡', unidadCompra: 'Squeeze', precioBase: 1600, rendimientoBase: 25, opcionesRendimiento: [10, 15, 25, 40]),
-      Ingrediente(nombre: 'Chucrut', emoji: '🥬', unidadCompra: 'Frasco', precioBase: 1500, rendimientoBase: 10, opcionesRendimiento: [5, 10, 15, 20]),
-      Ingrediente(nombre: 'Queso laminado', emoji: '🧀', unidadCompra: 'Paquete', precioBase: 3700, rendimientoBase: 10, opcionesRendimiento: [10, 15, 20]),
-      Ingrediente(nombre: 'Ají', emoji: '🌶️', unidadCompra: 'Frasco', precioBase: 1400, rendimientoBase: 20, opcionesRendimiento: [10, 20, 30]),
-      Ingrediente(nombre: 'Salsa americana', emoji: '🔴', unidadCompra: 'Frasco', precioBase: 1300, rendimientoBase: 20, opcionesRendimiento: [10, 20, 30]),
-      Ingrediente(nombre: 'Ketchup', emoji: '🍅', unidadCompra: 'Doypack', precioBase: 2500, rendimientoBase: 25, opcionesRendimiento: [10, 15, 25, 40]),
+      Ingrediente(nombre: 'Pan de completo', emoji: '🍞', formatos: [
+        FormatoCompra('Bolsa 5 uds', 5, 1150), FormatoCompra('Bolsa 8 uds', 8, 1800), FormatoCompra('Bolsa 10 uds', 10, 2300), FormatoCompra('Bolsa 24 uds', 24, 4500)
+      ]),
+      Ingrediente(nombre: 'Vienesa', emoji: '🌭', formatos: [
+        FormatoCompra('Paquete 250g (5 uds)', 5, 1400), FormatoCompra('Paquete 500g (10 uds)', 10, 2600), FormatoCompra('Paquete 1Kg (20 uds)', 20, 5000)
+      ]),
+      Ingrediente(nombre: 'Palta', emoji: '🥑', formatos: [
+        FormatoCompra('1 unidad', 3, 500, esUnidad: true, pesoGramos: 200), FormatoCompra('Malla 1 Kg', 15, 3000), FormatoCompra('Malla 2 Kg', 30, 5800)
+      ]),
+      Ingrediente(nombre: 'Tomate', emoji: '🍅', formatos: [
+        FormatoCompra('1 unidad', 3, 300, esUnidad: true, pesoGramos: 200), FormatoCompra('A granel 1 Kg', 20, 1500)
+      ]),
+      Ingrediente(nombre: 'Mayonesa', emoji: '🫙', formatos: [
+        FormatoCompra('Sachet 90g', 5, 600), FormatoCompra('Doypack 250g', 15, 1400), FormatoCompra('Doypack 400g', 25, 2200), FormatoCompra('Doypack 750g', 45, 3500), FormatoCompra('Doypack 900g', 55, 4200), FormatoCompra('Frasco 1 Kg', 60, 4800)
+      ]),
+      Ingrediente(nombre: 'Mostaza', emoji: '🟡', formatos: [
+        FormatoCompra('Squeeze 250g', 16, 1200), FormatoCompra('Squeeze 400g', 26, 1600), FormatoCompra('Doypack 1 Kg', 66, 3200)
+      ]),
+      Ingrediente(nombre: 'Chucrut', emoji: '🥬', formatos: [
+        FormatoCompra('Frasco 250g', 16, 1500), FormatoCompra('Frasco 500g', 33, 2800)
+      ]),
+      Ingrediente(nombre: 'Queso laminado', emoji: '🧀', formatos: [
+        FormatoCompra('Paquete 150g (6 lams)', 6, 1800), FormatoCompra('Paquete 250g (10 lams)', 10, 2600), FormatoCompra('Paquete 500g (20 lams)', 20, 4500)
+      ]),
+      Ingrediente(nombre: 'Ají', emoji: '🌶️', formatos: [
+        FormatoCompra('Frasco 100g', 10, 1000), FormatoCompra('Frasco 240g', 24, 2200)
+      ]),
+      Ingrediente(nombre: 'Salsa americana', emoji: '🔴', formatos: [
+        FormatoCompra('Frasco 250g', 16, 1300), FormatoCompra('Frasco 500g', 33, 2400)
+      ]),
+      Ingrediente(nombre: 'Ketchup', emoji: '🍅', formatos: [
+        FormatoCompra('Doypack 250g', 16, 1200), FormatoCompra('Doypack 400g', 26, 1800), FormatoCompra('Doypack 500g', 33, 2500), FormatoCompra('Doypack 1 Kg', 66, 4200)
+      ]),
     ];
     _cargarPrecios();
   }
 
   Future<void> _cargarPrecios() async {
     final datos = await GameData.cargarDatosIngredientes();
+    final bloqueados = await GameData.cargarFormatosBloqueados();
     if (!mounted) return;
     setState(() {
       for (var ing in ingredientes) {
+        // Cargar formato bloqueado
+        if (bloqueados.containsKey(ing.nombre)) {
+          int index = ing.formatos.indexWhere((f) => f.nombre == bloqueados[ing.nombre]);
+          if (index != -1) {
+            ing.formatoSeleccionadoIndex = index;
+            ing.formatoBloqueadoPorUsuario = true;
+          }
+        }
+        
+        // Cargar precios de formatos
         if (datos.containsKey(ing.nombre)) {
-          ing.precioActual = datos[ing.nombre]!['precio']!;
-          if (datos[ing.nombre]!.containsKey('rendimiento')) {
-            ing.rendimientoActual = datos[ing.nombre]!['rendimiento']!;
+          for (var f in ing.formatos) {
+            if (datos[ing.nombre]!.containsKey(f.nombre)) {
+              f.precioActual = datos[ing.nombre]![f.nombre]!;
+            }
           }
         }
       }
@@ -112,9 +169,7 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
     });
   }
 
-  Future<void> _guardarDatosIng(Ingrediente ing) async {
-    await GameData.guardarDatosIngrediente(ing.nombre, ing.precioActual, ing.rendimientoActual);
-  }
+
 
   void _ajustarPersonasStr(String val) {
     int parsed = int.tryParse(val) ?? comensales.length;
@@ -281,8 +336,8 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
   }
 
   void _editarPrecioIngrediente(Ingrediente ing) {
-    final controller = TextEditingController(text: ing.precioActual.toString());
-    int tempRendimiento = ing.rendimientoActual;
+    int tempFormatoIndex = ing.formatoSeleccionadoIndex;
+    final controller = TextEditingController(text: ing.formatos[tempFormatoIndex].precioActual.toString());
 
     showDialog(
       context: context,
@@ -302,28 +357,27 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Rendimiento (Unidades/Pack)', style: TextStyle(fontSize: 13, color: AppColors.mostaza, fontWeight: FontWeight.w700)),
+                  const Text('Formato de Compra', style: TextStyle(fontSize: 13, color: AppColors.mostaza, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: [
-                      ...ing.opcionesRendimiento.map((opcion) => ChoiceChip(
-                        label: Text('$opcion', style: const TextStyle(fontSize: 12)),
-                        selected: tempRendimiento == opcion,
+                    children: List.generate(ing.formatos.length, (i) {
+                      final formato = ing.formatos[i];
+                      return ChoiceChip(
+                        label: Text('${formato.nombre} (rinde ${formato.rendimiento})', style: const TextStyle(fontSize: 12)),
+                        selected: tempFormatoIndex == i,
                         selectedColor: AppColors.naranja.withValues(alpha: 0.3),
                         onSelected: (selected) {
-                          if (selected) setDialogState(() => tempRendimiento = opcion);
+                          if (selected) {
+                            setDialogState(() {
+                              tempFormatoIndex = i;
+                              controller.text = ing.formatos[i].precioActual.toString();
+                            });
+                          }
                         },
-                      )),
-                      if (!ing.opcionesRendimiento.contains(tempRendimiento))
-                        ChoiceChip(
-                          label: Text('$tempRendimiento (Custom)', style: const TextStyle(fontSize: 12)),
-                          selected: true,
-                          selectedColor: AppColors.naranja.withValues(alpha: 0.3),
-                          onSelected: (_) {},
-                        ),
-                    ],
+                      );
+                    }),
                   ),
                   const SizedBox(height: 16),
                   const Text('Precio de compra', style: TextStyle(fontSize: 13, color: AppColors.mostaza, fontWeight: FontWeight.w700)),
@@ -342,13 +396,21 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: () {
+                onPressed: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  for (var f in ing.formatos) {
+                    await prefs.remove('precio_v3_${ing.nombre}|${f.nombre}');
+                    f.precioActual = f.precioBase;
+                  }
+                  await GameData.resetearFormatoBloqueado(ing.nombre);
                   setState(() {
-                    ing.precioActual = ing.precioBase;
-                    ing.rendimientoActual = ing.rendimientoBase;
+                    ing.formatoBloqueadoPorUsuario = false;
+                    ing.formatoSeleccionadoIndex = 0;
                   });
-                  _guardarDatosIng(ing);
-                  Navigator.pop(context);
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    _abrirAjustesPrecios();
+                  }
                 },
                 child: const Text('Resetear', style: TextStyle(color: Colors.grey)),
               ),
@@ -356,14 +418,17 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
                 style: ElevatedButton.styleFrom(backgroundColor: AppColors.rojo, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                 onPressed: () {
                   final nuevo = int.tryParse(controller.text);
-                  if (nuevo != null && nuevo >= 0) {
+                  if (nuevo != null && nuevo > 0) {
                     setState(() {
-                      ing.precioActual = nuevo;
-                      ing.rendimientoActual = tempRendimiento;
+                      ing.formatoSeleccionadoIndex = tempFormatoIndex;
+                      ing.formatoBloqueadoPorUsuario = true;
+                      ing.formatoActual.precioActual = nuevo;
                     });
-                    _guardarDatosIng(ing);
+                    GameData.guardarDatosIngrediente(ing.nombre, ing.formatoActual.nombre, nuevo);
+                    GameData.guardarFormatoBloqueado(ing.nombre, ing.formatoActual.nombre);
                   }
                   Navigator.pop(context);
+                  _abrirAjustesPrecios();
                 },
                 child: const Text('Guardar', style: TextStyle(color: Colors.white)),
               ),
@@ -400,6 +465,9 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
     }
 
     final reqs = _ingredientesRequeridos;
+    for (var ing in ingredientes) {
+      ing.autoSeleccionarFormato(reqs[ing.nombre] ?? 0);
+    }
     final totalAproxUnidad = totalCompletosGlobales > 0 ? (costoTotalGlobal / totalCompletosGlobales).ceil() : 0;
 
     return Scaffold(
@@ -589,8 +657,11 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text('$udsComprar × ${ing.nombre}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.cafe)),
-                                      Text('Requiere $cant uds (Rinde ${ing.rendimientoActual})', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                                      if (ing.formatoActual.esUnidad)
+                                        Text('$udsComprar ${udsComprar == 1 ? 'unidad' : 'unidades'} de ${ing.nombre}${ing.formatoActual.pesoGramos != null ? ' (~${(ing.formatoActual.pesoGramos! * udsComprar >= 1000) ? '${((ing.formatoActual.pesoGramos! * udsComprar) / 1000.0).toStringAsFixed(1)} Kg' : '${ing.formatoActual.pesoGramos! * udsComprar}g'})' : ''}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.cafe))
+                                      else
+                                        Text('$udsComprar × ${ing.formatoActual.nombre} de ${ing.nombre}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.cafe)),
+                                      Text('Rinde para ${ing.rendimientoActual * udsComprar} completos', style: const TextStyle(fontSize: 10, color: Colors.grey)),
                                     ],
                                   ),
                                 ),
