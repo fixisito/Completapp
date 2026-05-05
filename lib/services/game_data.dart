@@ -1,253 +1,93 @@
-import 'package:shared_preferences/shared_preferences.dart';
+import 'calculadora_data_service.dart';
+import 'juego_data_service.dart';
+import 'pet_data_service.dart';
 
 class GameData {
-  static const _keyMonedas = 'monedas';
-  static const _keyNombrePet = 'pet_nombre';
-  static const _keyComida = 'pet_hambre';
-  static const _keyFelicidad = 'pet_felicidad';
-  static const _keyNivel = 'pet_nivel';
-  static const _keyExp = 'pet_exp';
-  static const _keyAccesorio = 'pet_accesorio';
-  static const _keyTimestamp = 'pet_timestamp';
-  static const _keyMejorPuntaje = 'mejor_puntaje_atrapa';
-
-  static const _keyVecesAlimentado = 'stats_veces_alimentado';
-  static const _keyPartidasJugadas = 'stats_partidas_jugadas';
-  static const _keyFechaCreacion = 'stats_fecha_creacion';
-  static const _keyUltimaVisita = 'stats_ultima_visita';
-  static const _keyRachaDias = 'stats_racha_dias';
-
-  // --- Monedas ---
   static Future<int> getMonedas() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_keyMonedas) ?? 0;
+    return PetDataService.getMonedas();
   }
 
   static Future<void> agregarMonedas(int cantidad) async {
-    final prefs = await SharedPreferences.getInstance();
-    final actual = prefs.getInt(_keyMonedas) ?? 0;
-    await prefs.setInt(_keyMonedas, actual + cantidad);
+    await PetDataService.agregarMonedas(cantidad);
   }
 
   static Future<bool> gastarMonedas(int cantidad) async {
-    final prefs = await SharedPreferences.getInstance();
-    final actual = prefs.getInt(_keyMonedas) ?? 0;
-    if (actual < cantidad) return false;
-    await prefs.setInt(_keyMonedas, actual - cantidad);
-    return true;
+    return PetDataService.gastarMonedas(cantidad);
   }
 
-  // --- Nombre del Pet ---
   static Future<String> getNombrePet() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyNombrePet) ?? '';
+    return PetDataService.getNombrePet();
   }
 
   static Future<void> setNombrePet(String nombre) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyNombrePet, nombre);
+    await PetDataService.setNombrePet(nombre);
   }
 
-  // --- Stats del Pet ---
   static Future<Map<String, dynamic>> getPetStats() async {
-    final prefs = await SharedPreferences.getInstance();
-    final ultimaVez = prefs.getInt(_keyTimestamp) ?? 0;
-    final ahora = DateTime.now().millisecondsSinceEpoch;
-    final segundosPasados = ((ahora - ultimaVez) / 1000).floor();
-
-    double comida = (prefs.getDouble(_keyComida) ?? 80) - (segundosPasados ~/ 30) * 3;
-    double felicidad = (prefs.getDouble(_keyFelicidad) ?? 80) - (segundosPasados ~/ 30) * 2;
-
-    return {
-      'comida': comida.clamp(0.0, 100.0),
-      'felicidad': felicidad.clamp(0.0, 100.0),
-      'nivel': prefs.getInt(_keyNivel) ?? 1,
-      'exp': prefs.getInt(_keyExp) ?? 0,
-      'accesorio': prefs.getString(_keyAccesorio) ?? '',
-      'monedas': prefs.getInt(_keyMonedas) ?? 0,
-      'nombre': prefs.getString(_keyNombrePet) ?? '',
-    };
+    return PetDataService.getPetStats();
   }
 
-  // --- Estadísticas ---
   static Future<void> registrarAlimentacion() async {
-    final prefs = await SharedPreferences.getInstance();
-    final veces = prefs.getInt(_keyVecesAlimentado) ?? 0;
-    await prefs.setInt(_keyVecesAlimentado, veces + 1);
+    await PetDataService.registrarAlimentacion();
   }
 
   static Future<void> registrarPartida() async {
-    final prefs = await SharedPreferences.getInstance();
-    final partidas = prefs.getInt(_keyPartidasJugadas) ?? 0;
-    await prefs.setInt(_keyPartidasJugadas, partidas + 1);
+    await PetDataService.registrarPartida();
   }
 
   static Future<void> verificarRachaDiaria() async {
-    final prefs = await SharedPreferences.getInstance();
-    final ahora = DateTime.now();
-    final hoyStr = '${ahora.year}-${ahora.month}-${ahora.day}';
-    final ultimaVisita = prefs.getString(_keyUltimaVisita) ?? '';
-
-    if (ultimaVisita == hoyStr) return;
-
-    if (prefs.getString(_keyFechaCreacion) == null) {
-      await prefs.setString(_keyFechaCreacion, hoyStr);
-    }
-
-    final ayer = ahora.subtract(const Duration(days: 1));
-    final ayerStr = '${ayer.year}-${ayer.month}-${ayer.day}';
-
-    int racha = prefs.getInt(_keyRachaDias) ?? 0;
-    if (ultimaVisita == ayerStr) {
-      racha++;
-    } else if (ultimaVisita.isNotEmpty) {
-      racha = 1;
-    } else {
-      racha = 1;
-    }
-
-    await prefs.setString(_keyUltimaVisita, hoyStr);
-    await prefs.setInt(_keyRachaDias, racha);
+    await PetDataService.verificarRachaDiaria();
   }
 
   static Future<Map<String, dynamic>> getEstadisticas() async {
-    final prefs = await SharedPreferences.getInstance();
-    final fechaCreacion = prefs.getString(_keyFechaCreacion);
-    int diasDesdeCreacion = 0;
-    if (fechaCreacion != null) {
-      final partes = fechaCreacion.split('-');
-      if (partes.length == 3) {
-        final fecha = DateTime(int.parse(partes[0]), int.parse(partes[1]), int.parse(partes[2]));
-        diasDesdeCreacion = DateTime.now().difference(fecha).inDays;
-      }
-    }
-
-    return {
-      'diasDesdeCreacion': diasDesdeCreacion,
-      'vecesAlimentado': prefs.getInt(_keyVecesAlimentado) ?? 0,
-      'partidasJugadas': prefs.getInt(_keyPartidasJugadas) ?? 0,
-      'mejorPuntaje': prefs.getInt(_keyMejorPuntaje) ?? 0,
-      'rachaDias': prefs.getInt(_keyRachaDias) ?? 0,
-    };
+    return PetDataService.getEstadisticas();
   }
 
-  // --- Precios de ingredientes multi-formato ---
-  static const _keyPrecioIngredienteV3 = 'precio_v3_';
-
   static Future<Map<String, Map<String, int>>> cargarDatosIngredientes() async {
-    final prefs = await SharedPreferences.getInstance();
-    final prefsKeys = prefs.getKeys();
-    final datos = <String, Map<String, int>>{};
-    for (final key in prefsKeys) {
-      if (key.startsWith(_keyPrecioIngredienteV3)) {
-        final rest = key.substring(_keyPrecioIngredienteV3.length);
-        final parts = rest.split('|');
-        if (parts.length == 2) {
-          final nombreIngrediente = parts[0];
-          final nombreFormato = parts[1];
-          final precio = prefs.getInt(key);
-          if (precio != null) {
-            datos.putIfAbsent(nombreIngrediente, () => {});
-            datos[nombreIngrediente]![nombreFormato] = precio;
-          }
-        }
-      }
-    }
-    return datos;
+    return CalculadoraDataService.cargarDatosIngredientes();
   }
 
   static Future<void> guardarDatosIngrediente(String ingrediente, String formato, int precio) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('$_keyPrecioIngredienteV3$ingrediente|$formato', precio);
-    } catch (e) {
-      // ignore: avoid_print
-      print('Error guardando precio de ingrediente: $e');
-    }
+    await CalculadoraDataService.guardarDatosIngrediente(
+      ingrediente,
+      formato,
+      precio,
+    );
   }
 
-  static const _keyFormatoBloqueado = 'formato_bloqueado_v3_';
-
   static Future<Map<String, String>> cargarFormatosBloqueados() async {
-    final prefs = await SharedPreferences.getInstance();
-    final prefsKeys = prefs.getKeys();
-    final datos = <String, String>{};
-    for (final key in prefsKeys) {
-      if (key.startsWith(_keyFormatoBloqueado)) {
-        final nombreIngrediente = key.substring(_keyFormatoBloqueado.length);
-        final formato = prefs.getString(key);
-        if (formato != null) datos[nombreIngrediente] = formato;
-      }
-    }
-    return datos;
+    return CalculadoraDataService.cargarFormatosBloqueados();
   }
 
   static Future<void> guardarFormatoBloqueado(String ingrediente, String formato) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('$_keyFormatoBloqueado$ingrediente', formato);
-  }
-  
-  static Future<void> resetearFormatoBloqueado(String ingrediente) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('$_keyFormatoBloqueado$ingrediente');
+    await CalculadoraDataService.guardarFormatoBloqueado(ingrediente, formato);
   }
 
-  // --- Últimos completos calculados ---
-  static const _keyUltimosCompletos = 'ultimos_completos';
+  static Future<void> resetearFormatoBloqueado(String ingrediente) async {
+    await CalculadoraDataService.resetearFormatoBloqueado(ingrediente);
+  }
 
   static Future<int> cargarUltimosCompletos() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getInt(_keyUltimosCompletos) ?? 0;
-    } catch (_) {
-      return 0;
-    }
+    return CalculadoraDataService.cargarUltimosCompletos();
   }
 
   static Future<void> guardarUltimosCompletos(int total) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_keyUltimosCompletos, total);
-    } catch (_) {}
+    await CalculadoraDataService.guardarUltimosCompletos(total);
   }
 
-  // --- Mejor puntaje del mini juego ---
   static Future<int> cargarMejorPuntaje() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getInt('mejor_puntaje_atrapa') ?? 0;
-    } catch (_) {
-      return 0;
-    }
+    return JuegoDataService.cargarMejorPuntaje();
   }
 
   static Future<void> guardarMejorPuntaje(int puntaje) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('mejor_puntaje_atrapa', puntaje);
-    } catch (_) {}
+    await JuegoDataService.guardarMejorPuntaje(puntaje);
   }
 
-  // --- Accesorios desbloqueados ---
-  static const _keyAccesoriosDesbloqueados = 'accesorios_desbloqueados';
-
   static Future<List<String>> cargarAccesoriosDesbloqueados() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getStringList(_keyAccesoriosDesbloqueados) ?? [];
-    } catch (_) {
-      return [];
-    }
+    return PetDataService.cargarAccesoriosDesbloqueados();
   }
 
   static Future<void> guardarAccesorioDesbloqueado(String emoji) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final actuales = prefs.getStringList(_keyAccesoriosDesbloqueados) ?? [];
-      if (!actuales.contains(emoji)) {
-        actuales.add(emoji);
-        await prefs.setStringList(_keyAccesoriosDesbloqueados, actuales);
-      }
-    } catch (_) {}
+    await PetDataService.guardarAccesorioDesbloqueado(emoji);
   }
 }

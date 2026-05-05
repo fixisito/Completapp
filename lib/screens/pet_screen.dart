@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import '../domain/pet/pet_progression.dart';
 import '../services/game_data.dart';
 import '../theme/app_theme.dart';
 import '../widgets/gradient_header.dart';
@@ -239,8 +240,8 @@ class _PetScreenState extends State<PetScreen> {
   void _bajarEstados() {
     if (!mounted) return;
     setState(() {
-      comida = (comida - 3).clamp(0, 100);
-      felicidad = (felicidad - 2).clamp(0, 100);
+      comida = (comida - 3).clamp(0, 100).toDouble();
+      felicidad = (felicidad - 2).clamp(0, 100).toDouble();
     });
     _guardarEstado();
   }
@@ -288,11 +289,29 @@ class _PetScreenState extends State<PetScreen> {
     GameData.registrarAlimentacion();
 
     setState(() {
-      comida = (comida + item.comida).clamp(0, 100);
-      felicidad = (felicidad + item.felicidad).clamp(0, 100);
-      exp += item.exp;
-      if (item.costo > 0) monedas -= item.costo;
-      _subirNivel();
+      final result = PetProgression.applyFeed(
+        comidaActual: comida,
+        felicidadActual: felicidad,
+        expActual: exp,
+        nivelActual: nivel,
+        monedasActuales: monedas,
+        efecto: ComidaEfecto(
+          costo: item.costo,
+          comida: item.comida,
+          felicidad: item.felicidad,
+          exp: item.exp,
+        ),
+      );
+      comida = result.comida;
+      felicidad = result.felicidad;
+      exp = result.exp;
+      nivel = result.nivel;
+      monedas = result.monedas;
+      if (result.levelUp) {
+        HapticFeedback.mediumImpact();
+        _sincronizarAccesoriosConNivel();
+        _mostrarToast('🎉 ¡$nombrePet subió al nivel $nivel!');
+      }
     });
     _guardarEstado();
     _recargarMonedas();
@@ -303,24 +322,25 @@ class _PetScreenState extends State<PetScreen> {
     HapticFeedback.lightImpact();
     _animarPet();
     setState(() {
-      felicidad = (felicidad + 15).clamp(0, 100);
-      comida = (comida - 5).clamp(0, 100);
-      exp += 5;
-      _subirNivel();
+      final result = PetProgression.applyPlay(
+        comidaActual: comida,
+        felicidadActual: felicidad,
+        expActual: exp,
+        nivelActual: nivel,
+        monedasActuales: monedas,
+      );
+      comida = result.comida;
+      felicidad = result.felicidad;
+      exp = result.exp;
+      nivel = result.nivel;
+      if (result.levelUp) {
+        HapticFeedback.mediumImpact();
+        _sincronizarAccesoriosConNivel();
+        _mostrarToast('🎉 ¡$nombrePet subió al nivel $nivel!');
+      }
     });
     _guardarEstado();
     _mostrarToast('¡$nombrePet jugó! +15 felicidad 🎉');
-  }
-
-  void _subirNivel() {
-    final expNecesaria = nivel * 50;
-    if (exp >= expNecesaria) {
-      exp -= expNecesaria;
-      nivel++;
-      HapticFeedback.mediumImpact();
-      _sincronizarAccesoriosConNivel();
-      _mostrarToast('🎉 ¡$nombrePet subió al nivel $nivel!');
-    }
   }
 
   Future<void> _recargarMonedas() async {
@@ -355,7 +375,7 @@ class _PetScreenState extends State<PetScreen> {
   }
 
   String get _expTexto => '$exp / ${nivel * 50} XP';
-  double get _expPorcentaje => (exp / (nivel * 50)).clamp(0, 1);
+  double get _expPorcentaje => (exp / (nivel * 50)).clamp(0, 1).toDouble();
 
   bool _accesorioDesbloqueado(Map<String, dynamic> acc) {
     final nivelReq = acc['nivelReq'] as int;

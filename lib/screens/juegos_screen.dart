@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'dart:math';
+import '../domain/juegos/game_scoring.dart';
 import '../services/game_data.dart';
 import '../theme/app_theme.dart';
 import '../widgets/gradient_header.dart';
@@ -144,10 +145,7 @@ class _JuegosScreenState extends State<JuegosScreen> with SingleTickerProviderSt
   }
 
   int get _spawnInterval {
-    if (puntaje > 30) return 700;
-    if (puntaje > 20) return 850;
-    if (puntaje > 10) return 1000;
-    return 1200;
+    return GameScoring.spawnIntervalMs(puntaje);
   }
 
   TipoItem _tipoAleatorio() {
@@ -197,32 +195,44 @@ class _JuegosScreenState extends State<JuegosScreen> with SingleTickerProviderSt
   void _tocarItem(_Item item) {
     if (pausado) return;
     HapticFeedback.selectionClick();
+
+    TipoItemJuego toDomain(TipoItem tipo) {
+      switch (tipo) {
+        case TipoItem.completo:
+          return TipoItemJuego.completo;
+        case TipoItem.dorado:
+          return TipoItemJuego.dorado;
+        case TipoItem.cebolla:
+          return TipoItemJuego.cebolla;
+      }
+    }
+
+    final result = GameScoring.onTouch(
+      tipo: toDomain(item.tipo),
+      puntajeActual: puntaje,
+      monedasGanadasActuales: monedasGanadas,
+      vidasActuales: vidas,
+    );
+
     setState(() {
       items.remove(item);
-      switch (item.tipo) {
-        case TipoItem.completo:
-          puntaje++;
-          monedasGanadas++;
-          break;
-        case TipoItem.dorado:
-          puntaje += 3;
-          monedasGanadas += 5;
-          HapticFeedback.mediumImpact();
-          break;
-        case TipoItem.cebolla:
-          vidas--;
-          HapticFeedback.heavyImpact();
-          if (vidas <= 0) {
-            _terminarJuego();
-            return;
-          }
-          break;
+      puntaje = result.puntaje;
+      monedasGanadas = result.monedasGanadas;
+      vidas = result.vidas;
+      if (item.tipo == TipoItem.dorado) {
+        HapticFeedback.mediumImpact();
+      } else if (item.tipo == TipoItem.cebolla) {
+        HapticFeedback.heavyImpact();
       }
       if (puntaje > mejorPuntaje) {
         mejorPuntaje = puntaje;
       }
     });
-    if (item.tipo != TipoItem.cebolla) {
+    if (result.gameOver) {
+      _terminarJuego();
+      return;
+    }
+    if (result.touchedGoodItem) {
       GameData.agregarMonedas(item.tipo == TipoItem.dorado ? 5 : 1);
       _mostrarFloating(item.x, item.y, item.tipo == TipoItem.dorado ? '+5 🪙' : '+1 🪙');
     } else {

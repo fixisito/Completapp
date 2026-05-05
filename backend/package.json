@@ -4,6 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "start:local-api": "node local_api.js",
+    "scrape:test": "node scraper.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

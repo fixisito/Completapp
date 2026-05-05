@@ -1,82 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../domain/calculator/calculator_domain.dart';
 import '../services/game_data.dart';
+import '../services/remote_price_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/gradient_header.dart';
 import '../widgets/counter_button.dart';
-
-class FormatoCompra {
-  final String nombre;
-  final int rendimiento;
-  final bool esUnidad;
-  final int? pesoGramos;
-  final int precioBase;
-  int precioActual;
-
-  FormatoCompra(this.nombre, this.rendimiento, this.precioBase, {this.esUnidad = false, this.pesoGramos})
-      : precioActual = precioBase;
-}
-
-class Ingrediente {
-  final String nombre;
-  final String emoji;
-  final List<FormatoCompra> formatos;
-  int formatoSeleccionadoIndex;
-  bool formatoBloqueadoPorUsuario;
-
-  Ingrediente({
-    required this.nombre,
-    required this.emoji,
-    required this.formatos,
-    this.formatoSeleccionadoIndex = 0,
-    this.formatoBloqueadoPorUsuario = false,
-  });
-
-  FormatoCompra get formatoActual => formatos[formatoSeleccionadoIndex];
-  int get rendimientoActual => formatoActual.rendimiento;
-  String get unidadCompra => formatoActual.nombre;
-  int get precioActual => formatoActual.precioActual;
-
-  int unidadesNecesarias(int requeridos) => (requeridos == 0 || rendimientoActual == 0) ? 0 : (requeridos / rendimientoActual).ceil();
-  int costoPara(int requeridos) => unidadesNecesarias(requeridos) * precioActual;
-
-  void autoSeleccionarFormato(int requeridos) {
-    if (formatoBloqueadoPorUsuario || requeridos <= 0) return;
-    int bestIndex = -1;
-    for (int i = 0; i < formatos.length; i++) {
-      if (formatos[i].rendimiento >= requeridos) {
-        bestIndex = i;
-        break;
-      }
-    }
-    if (bestIndex == -1) {
-      bestIndex = formatos.length - 1;
-    }
-    formatoSeleccionadoIndex = bestIndex;
-  }
-}
-
-class Receta {
-  final String nombre;
-  final String emoji;
-  final List<String> ingredientes;
-  const Receta({required this.nombre, required this.emoji, required this.ingredientes});
-}
-
-class Comensal {
-  int id;
-  int cantidadCompletos;
-  int recetaIndex;
-  List<String> ingredientesCustom;
-
-  Comensal({
-    required this.id,
-    this.cantidadCompletos = 1,
-    this.recetaIndex = 0,
-    List<String>? ingredientesCustom,
-  }) : ingredientesCustom = ingredientesCustom ?? [];
-}
 
 class CalculadoraScreen extends StatefulWidget {
   const CalculadoraScreen({super.key});
@@ -144,6 +74,9 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
   Future<void> _cargarPrecios() async {
     final datos = await GameData.cargarDatosIngredientes();
     final bloqueados = await GameData.cargarFormatosBloqueados();
+    final remotos = await RemotePriceService.fetchPricesByItems(
+      ingredientes.map((ing) => ing.nombre).toList(),
+    );
     if (!mounted) return;
     setState(() {
       for (var ing in ingredientes) {
@@ -164,6 +97,14 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
             }
           }
         }
+
+        final remotePrice = remotos[ing.nombre.toLowerCase()];
+        final remoteFormatIndex = remotePrice == null
+            ? -1
+            : ing.formatos.indexWhere((f) => f.nombre == remotePrice.formatName);
+        if (remotePrice != null && remoteFormatIndex != -1) {
+          ing.formatos[remoteFormatIndex].precioActual = remotePrice.price;
+        }
       }
       _cargando = false;
     });
@@ -173,7 +114,7 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
 
   void _ajustarPersonasStr(String val) {
     int parsed = int.tryParse(val) ?? comensales.length;
-    _ajustarPersonas(parsed.clamp(1, 100));
+    _ajustarPersonas(parsed.clamp(1, 100).toInt());
   }
 
   void _ajustarPersonas(int nuevasPersonas) {
@@ -199,29 +140,11 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
 
   int get totalCompletosGlobales => comensales.fold(0, (sum, c) => sum + c.cantidadCompletos);
 
-  Map<String, int> get _ingredientesRequeridos {
-    final reqs = <String, int>{};
-    for (var c in comensales) {
-      if (c.cantidadCompletos == 0) continue;
-      final ings = c.recetaIndex < 3 ? recetas[c.recetaIndex].ingredientes : c.ingredientesCustom;
-      for (var ing in ings) {
-        reqs[ing] = (reqs[ing] ?? 0) + c.cantidadCompletos;
-      }
-    }
-    return reqs;
-  }
+  Map<String, int> get _ingredientesRequeridos =>
+      CalculatorEngine.ingredientesRequeridos(comensales, recetas);
 
-  int get costoTotalGlobal {
-    int total = 0;
-    final reqs = _ingredientesRequeridos;
-    for (var ing in ingredientes) {
-      final cantidad = reqs[ing.nombre] ?? 0;
-      if (cantidad > 0) {
-        total += ing.costoPara(cantidad);
-      }
-    }
-    return total;
-  }
+  int get costoTotalGlobal =>
+      CalculatorEngine.costoTotal(ingredientes, _ingredientesRequeridos);
 
   String formatPesos(int valor) {
     return '\$${valor.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => '.')}';
@@ -564,8 +487,8 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
                                 const Spacer(),
                                 CounterButton(
                                   valor: c.cantidadCompletos,
-                                  onDecrement: () => setState(() => c.cantidadCompletos = (c.cantidadCompletos - 1).clamp(0, 10)),
-                                  onIncrement: () => setState(() => c.cantidadCompletos = (c.cantidadCompletos + 1).clamp(0, 10)),
+                                  onDecrement: () => setState(() => c.cantidadCompletos = (c.cantidadCompletos - 1).clamp(0, 10).toInt()),
+                                  onIncrement: () => setState(() => c.cantidadCompletos = (c.cantidadCompletos + 1).clamp(0, 10).toInt()),
                                   label: 'uds',
                                 ),
                               ],
