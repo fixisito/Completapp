@@ -77,7 +77,7 @@ Backend de precios en evolución:
 
 Puedes desarrollar toda la API de precios en local, sin Firebase ni plan de pago.
 
-1) Levantar API local:
+1. Levantar API local:
 
 ```bash
 cd backend
@@ -85,7 +85,7 @@ npm install
 npm run start:local-api
 ```
 
-2) Ejecutar Flutter apuntando al backend local:
+1. Ejecutar Flutter apuntando al backend local:
 
 - Android Emulator:
 
@@ -100,6 +100,7 @@ flutter run --dart-define=PRICES_API_URL=http://localhost:8787
 ```
 
 Endpoints disponibles en local:
+
 - `GET /health`
 - `GET /getPrices?items=pan de completo,vienesa` (retorna `formatName` para aplicar el precio al empaque correcto)
 - `POST /refreshPrices` (permite overrides manuales en body JSON)

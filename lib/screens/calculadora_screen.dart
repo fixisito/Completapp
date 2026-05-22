@@ -18,6 +18,7 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
   final TextEditingController _personasCtrl = TextEditingController(text: '0');
   List<Comensal> comensales = [];
   bool _cargando = true;
+  String _segmento = 'lider';
 
   static const recetas = [
     Receta(nombre: 'Italiano', emoji: '🇮🇹', ingredientes: ['Pan de completo', 'Vienesa', 'Palta', 'Tomate', 'Mayonesa']),
@@ -35,37 +36,37 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
     
     ingredientes = [
       Ingrediente(nombre: 'Pan de completo', emoji: '🍞', formatos: [
-        FormatoCompra('Bolsa 5 uds', 5, 1150), FormatoCompra('Bolsa 8 uds', 8, 1800), FormatoCompra('Bolsa 10 uds', 10, 2300), FormatoCompra('Bolsa 24 uds', 24, 4500)
+        FormatoCompra('Bolsa 5 uds', 5, 1000), FormatoCompra('Bolsa 6 uds XL', 6, 2290), FormatoCompra('Bolsa 8 uds', 8, 2000)
       ]),
       Ingrediente(nombre: 'Vienesa', emoji: '🌭', formatos: [
         FormatoCompra('Paquete 250g (5 uds)', 5, 1400), FormatoCompra('Paquete 500g (10 uds)', 10, 2600), FormatoCompra('Paquete 1Kg (20 uds)', 20, 5000)
       ]),
       Ingrediente(nombre: 'Palta', emoji: '🥑', formatos: [
-        FormatoCompra('1 unidad', 3, 500, esUnidad: true, pesoGramos: 200), FormatoCompra('Malla 1 Kg', 15, 3000), FormatoCompra('Malla 2 Kg', 30, 5800)
+        FormatoCompra('1 unidad', 3, 500, esUnidad: true, pesoGramos: 200), FormatoCompra('Malla 1 Kg', 15, 3500)
       ]),
       Ingrediente(nombre: 'Tomate', emoji: '🍅', formatos: [
-        FormatoCompra('1 unidad', 3, 300, esUnidad: true, pesoGramos: 200), FormatoCompra('A granel 1 Kg', 20, 1500)
+        FormatoCompra('1 unidad', 3, 300, esUnidad: true, pesoGramos: 200), FormatoCompra('Malla 1 Kg', 15, 1990)
       ]),
       Ingrediente(nombre: 'Mayonesa', emoji: '🫙', formatos: [
-        FormatoCompra('Sachet 90g', 5, 600), FormatoCompra('Doypack 250g', 15, 1400), FormatoCompra('Doypack 400g', 25, 2200), FormatoCompra('Doypack 750g', 45, 3500), FormatoCompra('Doypack 900g', 55, 4200), FormatoCompra('Frasco 1 Kg', 60, 4800)
+        FormatoCompra('Doypack 372g', 22, 2200), FormatoCompra('Doypack 630g', 38, 3500), FormatoCompra('Doypack 1 Kg', 60, 3400)
       ]),
       Ingrediente(nombre: 'Mostaza', emoji: '🟡', formatos: [
-        FormatoCompra('Squeeze 250g', 16, 1200), FormatoCompra('Squeeze 400g', 26, 1600), FormatoCompra('Doypack 1 Kg', 66, 3200)
+        FormatoCompra('Doypack 250g', 16, 1450), FormatoCompra('Doypack 470g', 30, 1890)
       ]),
       Ingrediente(nombre: 'Chucrut', emoji: '🥬', formatos: [
-        FormatoCompra('Frasco 250g', 16, 1500), FormatoCompra('Frasco 500g', 33, 2800)
+        FormatoCompra('Doypack 200g', 13, 990), FormatoCompra('Doypack 500g', 33, 2200)
       ]),
       Ingrediente(nombre: 'Queso laminado', emoji: '🧀', formatos: [
-        FormatoCompra('Paquete 150g (6 lams)', 6, 1800), FormatoCompra('Paquete 250g (10 lams)', 10, 2600), FormatoCompra('Paquete 500g (20 lams)', 20, 4500)
+        FormatoCompra('Laminado 150g', 8, 2440), FormatoCompra('Laminado 250g', 14, 3690), FormatoCompra('Laminado 500g', 28, 5500)
       ]),
       Ingrediente(nombre: 'Ají', emoji: '🌶️', formatos: [
-        FormatoCompra('Frasco 100g', 10, 1000), FormatoCompra('Frasco 240g', 24, 2200)
+        FormatoCompra('Botella 240g', 16, 1550), FormatoCompra('Squeeze 350g', 23, 1390)
       ]),
       Ingrediente(nombre: 'Salsa americana', emoji: '🔴', formatos: [
-        FormatoCompra('Frasco 250g', 16, 1300), FormatoCompra('Frasco 500g', 33, 2400)
+        FormatoCompra('Doypack 200g', 13, 1170), FormatoCompra('Doypack 500g', 33, 2400)
       ]),
       Ingrediente(nombre: 'Ketchup', emoji: '🍅', formatos: [
-        FormatoCompra('Doypack 250g', 16, 1200), FormatoCompra('Doypack 400g', 26, 1800), FormatoCompra('Doypack 500g', 33, 2500), FormatoCompra('Doypack 1 Kg', 66, 4200)
+        FormatoCompra('Doypack 250g', 16, 1790), FormatoCompra('Doypack 500g', 33, 2450), FormatoCompra('Doypack 900g', 60, 3200)
       ]),
     ];
     _cargarPrecios();
@@ -76,6 +77,7 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
     final bloqueados = await GameData.cargarFormatosBloqueados();
     final remotos = await RemotePriceService.fetchPricesByItems(
       ingredientes.map((ing) => ing.nombre).toList(),
+      segmento: _segmento,
     );
     if (!mounted) return;
     setState(() {
@@ -405,7 +407,34 @@ class _CalculadoraScreenState extends State<CalculadoraScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // --- SECCIÓN A: Configuración Global ---
-                  _seccionTitulo('👥 ¿Cuántas personas comerán?'),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _seccionTitulo('👥 ¿Cuántas personas?'),
+                      DropdownButton<String>(
+                        value: _segmento,
+                        icon: const Icon(Icons.storefront, color: AppColors.mostaza, size: 18),
+                        underline: const SizedBox(),
+                        style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.cafe, fontSize: 13),
+                        dropdownColor: AppColors.crema,
+                        items: const [
+                          DropdownMenuItem(value: 'lider', child: Text('Lider')),
+                          DropdownMenuItem(value: 'jumbo', child: Text('Jumbo (Prox)')),
+                          DropdownMenuItem(value: 'economico', child: Text('Más Barato')),
+                          DropdownMenuItem(value: 'promedio', child: Text('Promedio')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null && val != _segmento) {
+                            setState(() {
+                              _segmento = val;
+                              _cargando = true;
+                            });
+                            _cargarPrecios();
+                          }
+                        },
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 10),
                   Container(
                     padding: const EdgeInsets.all(16),

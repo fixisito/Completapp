@@ -17,11 +17,12 @@ class RemoteIngredientPrice {
 class RemotePriceService {
   // Cambia este valor por la URL real de Cloud Functions al desplegar.
   static const String _baseUrl =
-      String.fromEnvironment('PRICES_API_URL', defaultValue: '');
+      String.fromEnvironment('PRICES_API_URL', defaultValue: 'http://129.151.102.116');
 
   static Future<Map<String, RemoteIngredientPrice>> fetchPricesByItems(
-    List<String> items,
-  ) async {
+    List<String> items, {
+    String segmento = 'mejor',
+  }) async {
     if (_baseUrl.isEmpty || items.isEmpty) return {};
 
     final normalized = items
@@ -29,7 +30,7 @@ class RemotePriceService {
         .where((item) => item.isNotEmpty)
         .toList();
     final uri = Uri.parse(
-      '$_baseUrl/getPrices?items=${Uri.encodeComponent(normalized.join(','))}',
+      '$_baseUrl/getPrices?items=${Uri.encodeComponent(normalized.join(','))}&segmento=$segmento',
     );
 
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);

@@ -1,160 +1,177 @@
-import http from "node:http";
-import { URL } from "node:url";
+import http from 'node:http';
+import { URL } from 'node:url';
+import { readFileSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PRECIOS_FILE = join(__dirname, 'data', 'precios.json');
 const PORT = Number(process.env.PORT || 8787);
 
-// Base local data so development works without scraping.
-const localCache = new Map(
-  Object.entries({
-    "pan de completo": { price: 2300, formatName: "Bolsa 10 uds" },
-    vienesa: { price: 2600, formatName: "Paquete 500g (10 uds)" },
-    palta: { price: 3000, formatName: "Malla 1 Kg" },
-    tomate: { price: 1500, formatName: "A granel 1 Kg" },
-    mayonesa: { price: 2200, formatName: "Doypack 400g" },
-    mostaza: { price: 1600, formatName: "Squeeze 400g" },
-    chucrut: { price: 1500, formatName: "Frasco 250g" },
-    ketchup: { price: 1800, formatName: "Doypack 400g" },
-    "salsa americana": { price: 1300, formatName: "Frasco 250g" },
-    "queso laminado": { price: 2600, formatName: "Paquete 250g (10 lams)" },
-    "ají": { price: 1000, formatName: "Frasco 100g" },
-  })
-);
-
-function normalizeItemName(name) {
-  return name.trim().toLowerCase();
+/**
+ * Carga los precios desde el archivo JSON generado por el scraper.
+ * @returns {object}
+ */
+function loadPrices() {
+  if (!existsSync(PRECIOS_FILE)) return { precios: {} };
+  try {
+    return JSON.parse(readFileSync(PRECIOS_FILE, 'utf8'));
+  } catch {
+    return { precios: {} };
+  }
 }
 
 function json(res, status, payload) {
   const data = JSON.stringify(payload);
   res.writeHead(status, {
-    "content-type": "application/json; charset=utf-8",
-    "access-control-allow-origin": "*",
-    "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type,x-refresh-token",
+    'content-type': 'application/json; charset=utf-8',
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'GET,POST,OPTIONS',
+    'access-control-allow-headers': 'content-type',
   });
   res.end(data);
 }
 
-function getItemsFromQuery(url) {
-  const raw = url.searchParams.get("items") ?? "";
-  return raw
-    .split(",")
+function normalizeItemName(name) {
+  return name.trim().toLowerCase();
+}
+
+/**
+ * GET /getPrices?items=mayonesa,pan de completo&segmento=lider
+ *
+ * Segmentos válidos: lider, jumbo, economico (menor), promedio (media)
+ * Si no se especifica segmento, retorna el precio más bajo disponible.
+ */
+async function handleGetPrices(req, res, url) {
+  const rawItems = url.searchParams.get('items') ?? '';
+  const segmento = url.searchParams.get('segmento') ?? 'mejor';
+  const items = rawItems
+    .split(',')
     .map((it) => normalizeItemName(it))
     .filter(Boolean);
-}
 
-function buildPriceItem(itemName) {
-  const cached = localCache.get(itemName);
-  if (cached && typeof cached.price === "number" && cached.price > 0) {
-    return {
-      itemName,
-      formatName: cached.formatName,
-      price: cached.price,
-      currency: "CLP",
-      source: "local",
-      stale: false,
-      status: "fresh",
-      updatedAt: Date.now(),
-    };
-  }
-
-  return {
-    itemName,
-    price: null,
-    currency: "CLP",
-    source: "none",
-    stale: true,
-    status: "unavailable",
-    updatedAt: Date.now(),
-  };
-}
-
-async function handleGetPrices(req, res, url) {
-  const items = getItemsFromQuery(url);
   if (items.length === 0) {
     json(res, 400, {
-      error: "Missing query param items. Example: /getPrices?items=pan,vienesa",
+      error: 'Missing query param items. Example: /getPrices?items=mayonesa,vienesa',
     });
     return;
   }
 
-  const results = items.map((itemName) => buildPriceItem(itemName));
+  const cache = loadPrices();
+  const results = [];
+
+  for (const itemName of items) {
+    // Buscar todas las entradas que matcheen este ingrediente
+    const matches = Object.values(cache.precios || {}).filter(
+      (p) => p.ingrediente === itemName
+    );
+
+    if (matches.length === 0) {
+      results.push({
+        itemName,
+        price: null,
+        formatName: null,
+        source: 'none',
+        status: 'unavailable',
+      });
+      continue;
+    }
+
+    // Para cada formato encontrado, seleccionar el precio según segmento
+    for (const match of matches) {
+      const fuentes = match.fuentes || {};
+      let price = null;
+      let source = 'none';
+
+      if (segmento === 'lider' && fuentes.lider) {
+        price = fuentes.lider.price;
+        source = 'lider';
+      } else if (segmento === 'jumbo' && fuentes.jumbo) {
+        price = fuentes.jumbo.price;
+        source = 'jumbo';
+      } else if (segmento === 'economico') {
+        // El más barato de todos
+        const prices = Object.entries(fuentes)
+          .map(([s, d]) => ({ source: s, price: d.price }))
+          .sort((a, b) => a.price - b.price);
+        if (prices.length > 0) {
+          price = prices[0].price;
+          source = prices[0].source;
+        }
+      } else if (segmento === 'promedio') {
+        // Promedio de todas las fuentes
+        const allPrices = Object.values(fuentes).map((d) => d.price);
+        if (allPrices.length > 0) {
+          price = Math.round(allPrices.reduce((a, b) => a + b, 0) / allPrices.length);
+          source = 'promedio';
+        }
+      } else {
+        // "mejor" = el más barato
+        const prices = Object.entries(fuentes)
+          .map(([s, d]) => ({ source: s, price: d.price }))
+          .sort((a, b) => a.price - b.price);
+        if (prices.length > 0) {
+          price = prices[0].price;
+          source = prices[0].source;
+        }
+      }
+
+      if (price !== null) {
+        results.push({
+          itemName,
+          formatName: match.formatoApp,
+          gramaje: match.gramaje,
+          marca: match.marca,
+          price,
+          currency: 'CLP',
+          source,
+          stale: !!match.stale,
+          status: match.stale ? 'stale' : 'fresh',
+          updatedAt: cache.updatedAt,
+        });
+      }
+    }
+  }
+
   json(res, 200, {
-    updatedAt: Date.now(),
+    updatedAt: cache.updatedAt,
+    segmento,
     count: results.length,
     items: results,
   });
 }
 
-async function readJsonBody(req) {
-  const chunks = [];
-  for await (const chunk of req) {
-    chunks.push(chunk);
-  }
-  if (chunks.length === 0) return {};
-  const text = Buffer.concat(chunks).toString("utf8");
-  if (!text) return {};
-  return JSON.parse(text);
-}
-
-async function handleRefreshPrices(req, res) {
-  try {
-    const body = await readJsonBody(req);
-    const items = Array.isArray(body.items)
-      ? body.items.map((it) => normalizeItemName(String(it))).filter(Boolean)
-      : [];
-
-    // Local mode: optional manual overrides.
-    for (const row of Array.isArray(body.overrides) ? body.overrides : []) {
-      if (!row || typeof row !== "object") continue;
-      const itemName = normalizeItemName(String(row.itemName ?? ""));
-      const price = Number(row.price);
-      const formatName = String(row.formatName ?? "").trim();
-      if (!itemName || !Number.isFinite(price) || price <= 0) continue;
-      localCache.set(itemName, { price, formatName });
-    }
-
-    const targetItems = items.length > 0 ? items : [...localCache.keys()];
-    const refreshed = targetItems.map((itemName) => buildPriceItem(itemName));
-    json(res, 200, {
-      updatedAt: Date.now(),
-      count: refreshed.length,
-      items: refreshed,
-      mode: "local",
-    });
-  } catch (error) {
-    json(res, 400, { error: `Invalid JSON body: ${error}` });
-  }
-}
-
 const server = http.createServer(async (req, res) => {
-  const method = req.method ?? "GET";
-  const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
+  const method = req.method ?? 'GET';
+  const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
 
-  if (method === "OPTIONS") {
+  if (method === 'OPTIONS') {
     json(res, 204, {});
     return;
   }
 
-  if (method === "GET" && url.pathname === "/health") {
-    json(res, 200, { ok: true, mode: "local", port: PORT });
+  if (method === 'GET' && url.pathname === '/health') {
+    const cache = loadPrices();
+    json(res, 200, {
+      ok: true,
+      mode: existsSync(PRECIOS_FILE) ? 'scraped' : 'empty',
+      port: PORT,
+      lastUpdate: cache.updatedAt || null,
+      productCount: Object.keys(cache.precios || {}).length,
+    });
     return;
   }
 
-  if (method === "GET" && url.pathname === "/getPrices") {
+  if (method === 'GET' && url.pathname === '/getPrices') {
     await handleGetPrices(req, res, url);
     return;
   }
 
-  if (method === "POST" && url.pathname === "/refreshPrices") {
-    await handleRefreshPrices(req, res);
-    return;
-  }
-
-  json(res, 404, { error: "Not found" });
+  json(res, 404, { error: 'Not found' });
 });
 
 server.listen(PORT, () => {
-  // eslint-disable-next-line no-console
-  console.log(`Local Prices API running on http://localhost:${PORT}`);
+  console.log(`\n🌭 CompletApp API corriendo en http://localhost:${PORT}`);
+  console.log(`   GET /health              → Estado del servicio`);
+  console.log(`   GET /getPrices?items=...  → Consultar precios\n`);
 });
